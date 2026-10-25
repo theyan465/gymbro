@@ -176,3 +176,5 @@ canvas.chart{width:100%;height:180px;display:block}
 .tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--dim);text-transform:none;letter-spacing:0;background:var(--card2);border:1px solid var(--line);padding:3px 9px;border-radius:10px}
 .tag .ic{width:14px;height:14px}.tag.train{color:var(--f)}.tag.rest{color:var(--p)}
 .wrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+
+.row.pick{cursor:pointer}.row.pick:active{opacity:.6}
