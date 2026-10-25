@@ -49,6 +49,8 @@ const ICONS = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/>',
   key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -459,37 +461,64 @@ function viewStats() {
   }
 }
 
-// ---------- more ----------
+// ---------- account & settings ----------
+let moreSub = null;
+const dayNames = () => WD_ORDER.filter(d => S.trainDays.includes(d)).map(d => WD[d]).join(' ') || 'не выбраны';
+const mi = (id, icon, title, sub, cls = '') => `<button class="mi ${cls}" id="${id}"><span class="bd">${ic(icon)}</span><span class="tx"><b>${title}</b><small>${sub}</small></span>${ic('right', 'chev')}</button>`;
 function viewMore() {
+  const cloud = !!(CFG.url && user);
+  const back = `<button class="back" id="back">${ic('left')}Аккаунт</button>`;
+  const nav = () => { animate = true; window.scrollTo(0, 0); render(); };
+  const flash = (el, text) => { const t = el.textContent; el.textContent = text; setTimeout(() => { el.textContent = t; }, 1200); };
   const goalFields = (p, v) => `<div class="grid2"><div><label>Ккал</label><input inputmode="numeric" id="${p}k" value="${v.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" id="${p}p" value="${v.p}"></div>
     <div><label>Жиры, г</label><input inputmode="numeric" id="${p}f" value="${v.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" id="${p}c" value="${v.c}"></div></div>`;
-  $('#view').innerHTML = accountCard() + `<div class="card"><h2><span class="hic">${ic('bolt')}Норма: тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
-    <div class="card"><h2><span class="hic">${ic('moon')}Норма: день отдыха</span></h2>${goalFields('r', S.goalsRest)}</div>
-    <div class="card"><h2>Тренировочные дни недели</h2><div id="tdays">${wdChips(S.trainDays)}</div>
-    <div class="dim small" style="margin:8px 0">День также считается тренировочным, если в нём записана тренировка. Тип дня можно переключить вручную на вкладке «Питание».</div>
-    <button class="btn" id="sg">Сохранить цели</button></div>
-    <div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>
-    <div class="card"><h2>Резервная копия</h2><div class="dim" style="margin-bottom:8px">Данные хранятся в вашем аккаунте. Экспорт — дополнительная копия на всякий случай.</div>
-    <div class="btns"><button class="btn ghost" id="exp">Экспорт JSON</button><button class="btn ghost" id="imp">Импорт</button></div><input type="file" id="impf" accept="application/json" hidden></div>`;
-  bindAccount();
-  bindChips($('#tdays'));
-  $('#sg').onclick = () => {
-    const rd = p => ({ kcal: num($(`#${p}k`).value), p: num($(`#${p}p`).value), f: num($(`#${p}f`).value), c: num($(`#${p}c`).value) });
-    S.goals = rd('g'); S.goalsRest = rd('r'); S.trainDays = pickedDays($('#tdays')); save();
-    const b = $('#sg'); b.textContent = 'Сохранено'; setTimeout(() => { b.textContent = 'Сохранить цели'; }, 1200);
-  };
-  document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
-  $('#exp').onclick = () => {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' }));
-    a.download = 'gymbro-' + today() + '.json'; a.click();
-  };
-  $('#imp').onclick = () => $('#impf').click();
-  $('#impf').onchange = async e => {
-    try { const d = JSON.parse(await e.target.files[0].text()); if (!confirm('Заменить текущие данные импортированными?')) return; S = Object.assign(fresh(), d); save(); render(); }
-    catch { alert('Неверный файл'); }
-  };
-}
 
+  if (!moreSub) {
+    $('#view').innerHTML = `<div class="card profile"><div class="avatar">${esc((cloud ? user.email : 'G')[0].toUpperCase())}</div>
+      <div class="main"><b>${cloud ? esc(user.email) : 'Локальный режим'}</b><div class="sub">${cloud ? (isAdmin ? 'Администратор' : 'Синхронизация включена') : 'Данные только на этом устройстве'}</div></div></div>
+      <div class="card menu"><h2>Настройки</h2>
+        ${mi('m-goals', 'bolt', 'Цели питания', `${S.goals.kcal} / ${S.goalsRest.kcal} ккал (тренировка / отдых)`)}
+        ${mi('m-days', 'calendar', 'Тренировочные дни', dayNames())}
+        ${mi('m-foods', 'utensils', 'Мои продукты', S.foods.length + ' шт.')}
+        ${mi('m-data', 'db', 'Данные и копия', cloud ? 'Синхронизация, экспорт, импорт' : 'Экспорт и импорт')}
+        ${isAdmin ? mi('m-admin', 'crown', 'Администратор', 'Общая база, код доступа') : ''}
+      </div>
+      ${cloud ? `<div class="card menu">${mi('logout', 'logout', 'Выйти', 'Данные останутся в облаке', 'danger')}</div>` : ''}`;
+    [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; nav(); }; });
+  } else if (moreSub === 'goals') {
+    $('#view').innerHTML = back + `<div class="card"><h2><span class="hic">${ic('bolt')}Тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
+      <div class="card"><h2><span class="hic">${ic('moon')}День отдыха</span></h2>${goalFields('r', S.goalsRest)}</div><button class="btn full" id="sg">Сохранить</button>`;
+    $('#sg').onclick = () => {
+      const rd = p => ({ kcal: num($(`#${p}k`).value), p: num($(`#${p}p`).value), f: num($(`#${p}f`).value), c: num($(`#${p}c`).value) });
+      S.goals = rd('g'); S.goalsRest = rd('r'); save(); flash($('#sg'), 'Сохранено');
+    };
+  } else if (moreSub === 'days') {
+    $('#view').innerHTML = back + `<div class="card"><h2>Тренировочные дни недели</h2><div id="tdays">${wdChips(S.trainDays)}</div>
+      <div class="dim small" style="margin-top:10px">День также считается тренировочным, если в нём записана тренировка. Тип дня можно переключить вручную на вкладке «Питание».</div></div><button class="btn full" id="sg">Сохранить</button>`;
+    bindChips($('#tdays'));
+    $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); flash($('#sg'), 'Сохранено'); };
+  } else if (moreSub === 'foods') {
+    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
+    document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
+  } else if (moreSub === 'data') {
+    $('#view').innerHTML = back + (cloud ? `<div class="card"><h2>Синхронизация</h2><div class="sub dim" id="syncst" style="margin-bottom:10px">${esc(syncState)}</div><button class="btn ghost" id="syncnow">${ic('refresh')}Синхронизировать</button></div>` : '') +
+      `<div class="card"><h2>Резервная копия</h2><div class="dim small" style="margin-bottom:10px">${cloud ? 'Данные хранятся в вашем аккаунте. Экспорт — дополнительная копия на всякий случай.' : 'Данные хранятся только в этом браузере. Делайте экспорт время от времени.'}</div>
+      <div class="btns"><button class="btn ghost" id="exp">Экспорт JSON</button><button class="btn ghost" id="imp">Импорт</button></div><input type="file" id="impf" accept="application/json" hidden></div>`;
+    $('#exp').onclick = () => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' }));
+      a.download = 'gymbro-' + today() + '.json'; a.click();
+    };
+    $('#imp').onclick = () => $('#impf').click();
+    $('#impf').onchange = async e => {
+      try { const d = JSON.parse(await e.target.files[0].text()); if (!confirm('Заменить текущие данные импортированными?')) return; S = Object.assign(fresh(), d); save(); render(); }
+      catch { alert('Неверный файл'); }
+    };
+  } else if (moreSub === 'admin') {
+    $('#view').innerHTML = back + `<div class="card menu"><h2>Администратор</h2>${mi('admBase', 'db', 'Общая база', 'Продукты и упражнения всех пользователей')}${mi('admCode', 'key', 'Код доступа', 'Нужен новым пользователям при регистрации')}</div>`;
+  }
+  if ($('#back')) $('#back').onclick = () => { moreSub = null; nav(); };
+  bindAccount();
+}
 
 // ---------- cloud sync (Supabase, optional) ----------
 const CFG = window.GYMBRO_CONFIG || {};
@@ -536,11 +565,6 @@ async function cloudInit() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
 
-function accountCard() {
-  if (!CFG.url || !user) return '';
-  return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
-    <div class="btns"><button class="btn ghost" id="syncnow">${ic('refresh')}Синхронизировать</button><button class="btn ghost" id="logout">${ic('logout')}Выйти</button></div></div>` + (isAdmin ? `<div class="card"><h2><span class="hic">${ic('crown')}Администратор</span></h2><div class="btns"><button class="btn ghost" id="admBase">${ic('db')}Общая база</button><button class="btn ghost" id="admCode">${ic('key')}Код доступа</button></div></div>` : '');
-}
 function viewAuth() {
   $('#top').innerHTML = '<h1>GymBro</h1>';
   $('#view').innerHTML = `<div class="card"><h2>Вход</h2><div class="dim" style="margin-bottom:6px">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
@@ -569,7 +593,7 @@ function bindAccount() {
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
     await push(); await sb.auth.signOut(); user = null; isAdmin = false;
-    S = fresh(); localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
+    S = fresh(); moreSub = null; localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
 
@@ -662,7 +686,7 @@ async function adminBase() {
 }
 
 // ---------- shell ----------
-const TITLES = { food: 'Питание', train: 'Тренировки', vit: 'Витамины', body: 'Тело', stats: 'Прогресс', more: 'Настройки' };
+const TITLES = { food: 'Питание', train: 'Тренировки', vit: 'Витамины', body: 'Тело', stats: 'Прогресс', more: 'Аккаунт' };
 function render() {
   const loading = !!(CFG.url && !authReady), gate = !!(CFG.url && sb && !user);
   document.body.classList.toggle('gate', loading || gate);
@@ -679,7 +703,7 @@ function render() {
   $('#view').classList.toggle('anim', animate); animate = false;
   ({ food: viewFood, train: viewTrain, vit: viewVit, body: viewBody, stats: viewStats, more: viewMore })[tab]();
 }
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; animate = true; window.scrollTo(0, 0); render(); });
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === 'more') moreSub = null; animate = true; window.scrollTo(0, 0); render(); });
 // new day: checkmarks reset automatically because history is keyed by date
 function checkRollover() {
   const t = today(); if (t === lastToday) return;
@@ -690,4 +714,4 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 setInterval(checkRollover, 30000);
 render();
 cloudInit();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});

@@ -130,3 +130,18 @@ canvas.chart{width:100%;height:180px;display:block}
 #view.anim .bar i{animation:grow .8s var(--ease) .15s both}
 #view.anim .ring-fg{animation:ringIn 1.1s var(--ease) .1s both}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.profile{display:flex;align-items:center;gap:14px}
+.profile .main{min-width:0}.profile b{display:block;overflow:hidden;text-overflow:ellipsis;font-size:17px}
+.avatar{width:56px;height:56px;flex:none;border-radius:50%;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#032a20;display:grid;place-items:center;font-size:24px;font-weight:700;box-shadow:0 6px 16px rgba(52,211,153,.2)}
+.menu{padding-bottom:4px}
+.mi{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;background:none;border:0;border-top:1px solid var(--line);color:var(--txt);text-align:left;font:inherit;transition:opacity .15s}
+.card h2+.mi{border-top:0}
+.mi:active{opacity:.6}
+.mi .bd{width:38px;height:38px;flex:none;border-radius:12px;background:var(--card2);border:1px solid var(--line);display:grid;place-items:center;color:var(--acc)}
+.mi .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.mi b{font-weight:600;font-size:16px}
+.mi small{color:var(--dim);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mi .chev{width:18px;height:18px;color:var(--dim)}
+.mi.danger .bd,.mi.danger b{color:var(--bad)}
+.back{display:inline-flex;align-items:center;gap:4px;background:none;border:0;color:var(--acc);font-size:16px;font-weight:600;padding:2px 0 12px}
