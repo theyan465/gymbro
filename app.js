@@ -58,6 +58,7 @@ const ICONS = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -293,6 +294,16 @@ function addMealSheet(food) {
   });
 }
 
+// two big buttons: take a photo now, or pick one from the gallery
+const photoPicker = id => `<div class="pick2"><button type="button" class="pickbtn" data-pick="${id}c">${ic('camera')}<b>Камера</b><small>Снять сейчас</small></button><button type="button" class="pickbtn" data-pick="${id}g">${ic('image')}<b>Фото</b><small>Из галереи</small></button></div>
+  <input type="file" id="${id}c" accept="image/*" capture="environment" hidden><input type="file" id="${id}g" accept="image/*" hidden>`;
+function bindPicker(id, fn) {
+  ['c', 'g'].forEach(k => {
+    $('#' + id + k).onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) fn(f); };
+    document.querySelector(`[data-pick="${id}${k}"]`).onclick = () => $('#' + id + k).click();
+  });
+}
+
 // barcode
 let scanner = null;
 function stopScanner() {
@@ -323,19 +334,17 @@ function scanBarcode(cb) {
   const onCode = typeof cb === 'function' ? cb : lookupBarcode;
   const handle = code => { stopScanner(); onCode(code); };
   sheet(`<h2 class="sh">Сканер штрихкода</h2><div id="reader"></div><div id="rtmp" hidden></div>
-    <div id="msg" class="dim" style="margin:8px 0">Наведите камеру на штрихкод, держите ровно на расстоянии 10–20 см. Не получается — снимите фото штрихкода.</div>
-    <div class="btns"><button class="btn" id="photo">${ic('camera')}Снять фото штрихкода</button><button class="btn ghost" id="manual">Ввести номер</button></div>
-    <input type="file" id="pfile" accept="image/*" capture="environment" hidden>`, () => {
+    <div id="msg" class="dim small" style="margin:8px 0">Наведите камеру на штрихкод, держите ровно на расстоянии 10–20 см.</div>
+    <div class="dim small" style="margin-top:10px">Не читается? Снимите штрихкод на фото:</div>${photoPicker('bp')}
+    <button class="btn ghost full" id="manual" style="margin:0">Ввести номер вручную</button>`, () => {
     $('#manual').onclick = () => { const c = prompt('Штрихкод (цифры)'); if (c && c.trim()) handle(c.trim()); };
-    $('#photo').onclick = () => $('#pfile').click();
-    $('#pfile').onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
+    bindPicker('bp', async f => {
       stopScanner(); $('#msg').textContent = 'Распознаю штрихкод…';
       const code = await decodeBarcodeFile(f).catch(() => null);
       if (code) return handle(code);
-      $('#msg').innerHTML = 'Не нашёл штрихкод на фото. Снимите ближе и ровно, чтобы он занимал большую часть кадра. <button class="btn ghost sm" id="again">Попробовать снова</button>';
+      $('#msg').innerHTML = 'Не нашёл штрихкод на фото. Снимите ближе и ровно, чтобы он занимал большую часть кадра. <button class="btn ghost sm" id="again">Включить камеру снова</button>';
       $('#again').onclick = () => scanBarcode(onCode);
-    };
+    });
     if (typeof Html5Qrcode === 'undefined') { $('#msg').textContent = 'Живой сканер не загрузился — снимите фото штрихкода.'; return; }
     scanner = new Html5Qrcode('reader', { formatsToSupport: bcFormats(), verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
     let done = false;
@@ -374,6 +383,7 @@ async function lookupBarcode(code) {
   });
 }
 
+const RU_STATUS = { 'loading tesseract core': 'Загружаю модуль', 'initializing tesseract': 'Запускаю', 'loading language traineddata': 'Загружаю язык', 'initializing api': 'Подготовка', 'recognizing text': 'Читаю текст' };
 // OCR of a nutrition label (Tesseract.js "best" models, loaded on demand; needs internet on first use, then cached)
 const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0_best';
 function loadScript(src) {
@@ -452,18 +462,23 @@ function mergeLabels(list) {
 function ocrLabel(pre = {}) {
   const lang0 = localStorage.getItem('gymbro.ocrLang') || 'rus+eng';
   const langs = [['rus+eng', 'Русский + English'], ['eng', 'English'], ['eng+deu', 'English + Deutsch'], ['eng+fra', 'English + Français'], ['eng+spa', 'English + Español'], ['eng+pol', 'English + Polski'], ['eng+ukr', 'English + Українська'], ['eng+tur', 'English + Türkçe'], ['eng+ita', 'English + Italiano']];
-  sheet(`<h2 class="sh">Фото этикетки КБЖУ</h2>
-    <div class="dim small">Снимите таблицу «на 100 г» крупно, ровно и без бликов — чтобы она занимала почти весь кадр. Распознавание на устройстве; при первом запуске нужен интернет (до ~30 МБ языковых данных, дальше сохраняются).</div>
-    <label>Языки</label><select id="lang">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select>
-    <input id="file" type="file" accept="image/*" capture="environment" style="margin-top:10px"><div id="msg" class="dim" style="margin:8px 0"></div>`, () => {
-    $('#file').onchange = async e => {
-      const f = e.target.files[0]; if (!f) return;
+  sheet(`<h2 class="sh">Этикетка КБЖУ</h2>
+    <div class="dim small">Таблица «на 100 г» должна занимать почти весь кадр: крупно, ровно, без бликов.</div>
+    ${photoPicker('op')}
+    <label>Язык этикетки</label><select id="lang">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <div id="prog" hidden style="margin-top:14px"><div class="bar"><i id="pbar" style="width:4%"></i></div></div>
+    <div id="msg" class="dim small" style="margin:10px 0 2px"></div>
+    <div class="dim small" style="margin-top:6px">Распознавание идёт на телефоне. При первом запуске нужен интернет (до ~30 МБ языковых данных, дальше они сохраняются).</div>`, () => {
+    let busy = false;
+    bindPicker('op', async f => {
+      if (busy) return; busy = true; $('#sheet .panel').classList.add('busy'); $('#prog').hidden = false;
+      const setP = v => { $('#pbar').style.width = Math.max(4, Math.min(100, v)) + '%'; };
       const msg = $('#msg'), lang = $('#lang').value; localStorage.setItem('gymbro.ocrLang', lang);
-      msg.textContent = 'Готовлю изображение…';
+      msg.textContent = 'Готовлю изображение…'; setP(6);
       try {
         const prep = await prepLabel(f);
-        if (typeof Tesseract === 'undefined') { msg.textContent = 'Загружаю распознавание…'; await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'); }
-        const worker = await Tesseract.createWorker(lang, 1, { langPath: TESS_LANG_PATH, logger: m => { if (m.status) msg.textContent = m.status + ' ' + Math.round((m.progress || 0) * 100) + '%'; } });
+        if (typeof Tesseract === 'undefined') { msg.textContent = 'Загружаю распознавание…'; setP(12); await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'); }
+        const worker = await Tesseract.createWorker(lang, 1, { langPath: TESS_LANG_PATH, logger: m => { if (m.status) { msg.textContent = (RU_STATUS[m.status] || m.status) + ' ' + Math.round((m.progress || 0) * 100) + '%'; setP(15 + (m.progress || 0) * 80); } } });
         const texts = [];
         try {
           await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' }); texts.push((await worker.recognize(prep.bin)).data.text);
@@ -472,8 +487,8 @@ function ocrLabel(pre = {}) {
         const res = mergeLabels(texts.map(parseLabel));
         const keep = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { keep[k] = res[k] || pre[k] || ''; });
         foodForm({ ...pre, ...keep, name: pre.name || '', note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.', raw: texts.join('\n———\n') });
-      } catch (err) { msg.textContent = 'Не удалось распознать: ' + (err && err.message || err); }
-    };
+      } catch (err) { msg.textContent = 'Не удалось распознать: ' + (err && err.message || err); busy = false; $('#sheet .panel').classList.remove('busy'); $('#prog').hidden = true; }
+    });
   });
 }
 

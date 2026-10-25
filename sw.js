@@ -1,4 +1,4 @@
-const CACHE = 'gymbro-v15';
+const CACHE = 'gymbro-v16';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'vendor/html5-qrcode.min.js', 'vendor/supabase.js', 'config.js', 'icons/icon-180.png', 'icons/icon-32.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
