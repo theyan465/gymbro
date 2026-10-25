@@ -4,7 +4,7 @@
 const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
-  trainDays: [1, 3, 5], dayType: {}, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
+  trainDays: [1, 3, 5], dayType: {}, templates: [], vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
 const fresh = () => structuredClone(DEFAULTS);
 let S;
@@ -54,6 +54,8 @@ const ICONS = {
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
   circle: '<circle cx="12" cy="12" r="9"/>',
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -474,17 +476,24 @@ function viewTrain() {
     ${streakChip('train', 'тренировок подряд по плану')}
     <div class="card"><div class="grid2"><div><div class="dim">Объём</div><div class="big">${Math.round(vol)} <small class="dim" style="font-size:14px">кг</small></div></div>
     <div><div class="dim">Упражнений / подходов</div><div class="big">${exs.length} / ${exs.reduce((a, e) => a + e.sets.length, 0)}</div></div></div></div>
-    <button class="btn full" id="addEx">${ic('plus')}Упражнение</button>
+    <div class="actions2"><button class="btn" id="addEx">${ic('plus')}Упражнение</button><button class="btn ghost" id="tpls">${ic('list')}Шаблоны</button></div>
+    ${!exs.length && S.templates.length ? `<div class="card"><h2>Начать из шаблона</h2><div class="chips">${S.templates.map(t => `<button class="chip" data-usetpl="${t.id}">${esc(t.name)}</button>`).join('')}</div></div>` : ''}
     ${exs.map((e, i) => {
       const hist = exHistory(e.name, day)[0], prev = bestE1(e.name, day);
       const best = Math.max(0, ...e.sets.map(s => e1rm(s.w, s.r)));
+      const nxt = (e.plan && e.plan[e.sets.length]) || e.sets[e.sets.length - 1] || (hist && hist.ex.sets[0]) || { w: '', r: '' };
       return `<div class="card"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">${ic('x')}</button></h2>
+        ${e.plan && e.plan.length ? `<div class="plan"><span class="dim">План:</span>${e.plan.map((x, j) => `<span class="pl ${j < e.sets.length ? 'ok' : ''}">${x.w}×${x.r}</span>`).join('')}</div>` : ''}
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
         ${e.sets.map((s, j) => `<div class="row"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
-        <div class="grid4" style="grid-template-columns:1fr 1fr auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${e.sets.length ? e.sets[e.sets.length - 1].w : (hist ? hist.ex.sets[0].w : '')}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${e.sets.length ? e.sets[e.sets.length - 1].r : (hist ? hist.ex.sets[0].r : '')}"><button class="btn" data-addset="${i}">+</button></div>
+        <div class="grid4" style="grid-template-columns:1fr 1fr auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${nxt.w}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${nxt.r}"><button class="btn" data-addset="${i}">+</button></div>
         <div class="sub dim" style="margin-top:6px">Объём: ${Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0))} кг</div></div>`;
-    }).join('') || '<div class="empty">В этот день тренировок нет</div>'}`;
-  $('#addEx').onclick = addExercise;
+    }).join('') || '<div class="empty">В этот день тренировок нет</div>'}
+    ${exs.length ? `<button class="btn ghost full" id="savetpl">${ic('bookmark')}Сохранить как шаблон</button>` : ''}`;
+  $('#addEx').onclick = () => addExercise();
+  $('#tpls').onclick = tplList;
+  if ($('#savetpl')) $('#savetpl').onclick = saveAsTemplate;
+  document.querySelectorAll('[data-usetpl]').forEach(b => b.onclick = () => applyTemplate(b.dataset.usetpl));
   document.querySelectorAll('[data-addset]').forEach(b => b.onclick = () => {
     const i = +b.dataset.addset, wv = num($(`[data-w="${i}"]`).value), rv = Math.round(num($(`[data-r="${i}"]`).value));
     if (rv <= 0) return; w.exercises[i].sets.push({ w: wv, r: rv }); save(); render();
@@ -504,9 +513,13 @@ const allExNames = () => {
   return [...mine, ...rest];
 };
 const exNames = () => [...new Set(S.workouts.flatMap(w => w.exercises.map(e => e.name)))].sort();
-function addExercise() {
+function addExercise(cb) {
   const all = allExNames();
-  const add = name => { name = name.trim(); if (!name) return; getWorkout(true).exercises.push({ name, sets: [] }); save(); shareExercise(name); closeSheet(); render(); };
+  const add = name => {
+    name = name.trim(); if (!name) return; shareExercise(name);
+    if (typeof cb === 'function') return cb(name);
+    getWorkout(true).exercises.push({ name, sets: [] }); save(); closeSheet(); render();
+  };
   sheet(`<h2 class="sh">Упражнение</h2><input id="n" placeholder="Поиск или новое название" autocomplete="off" autocapitalize="sentences"><div id="exl" style="margin:8px 0"></div>
     <div class="btns"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
     const draw = raw => {
@@ -522,6 +535,63 @@ function addExercise() {
     draw(''); $('#n').oninput = e => draw(e.target.value);
     $('#n').onkeydown = e => { if (e.key === 'Enter') add($('#n').value); };
     $('#cancel').onclick = closeSheet;
+  });
+}
+
+
+// ---------- workout templates ----------
+const planText = plan => (plan || []).map(x => `${x.w}×${x.r}`).join(', ');
+function parsePlan(text) {
+  return text.split(/[,;\n]+/).map(t => /(\d+(?:[.,]\d+)?)\s*[x×хХ*]\s*(\d+)/i.exec(t)).filter(Boolean).map(m => ({ w: num(m[1]), r: parseInt(m[2], 10) })).filter(x => x.r > 0);
+}
+function applyTemplate(id) {
+  const t = S.templates.find(x => x.id === id); if (!t) return;
+  const w = getWorkout(true);
+  t.exercises.forEach(e => w.exercises.push({ name: e.name, sets: [], plan: e.plan.map(x => ({ ...x })) }));
+  save(); closeSheet(); render();
+}
+function tplList() {
+  sheet(`<h2 class="sh">Шаблоны тренировок</h2>
+    ${S.templates.length ? S.templates.map(t => `<div class="row"><div class="main"><b>${esc(t.name)}</b><div class="sub">${t.exercises.length} упр. · ${esc(t.exercises.map(e => e.name).join(', ')).slice(0, 70)}</div></div><button class="btn sm" data-use="${t.id}">Применить</button><button class="btn del" data-edit="${t.id}" aria-label="Изменить">${ic('edit')}</button></div>`).join('') : '<div class="empty">Пока нет шаблонов. Создайте новый или сохраните сегодняшнюю тренировку как шаблон.</div>'}
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" id="newtpl">${ic('plus')}Новый шаблон</button></div>`, p => {
+    p.querySelectorAll('[data-use]').forEach(b => b.onclick = () => applyTemplate(b.dataset.use));
+    p.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const t = S.templates.find(x => x.id === b.dataset.edit); tplEditor({ id: t.id, name: t.name, exercises: t.exercises.map(e => ({ name: e.name, plan: e.plan.map(x => ({ ...x })) })) }); });
+    $('#newtpl').onclick = () => tplEditor({ name: '', exercises: [] });
+  });
+}
+function tplEditor(draft) {
+  sheet(`<h2 class="sh">${draft.id ? 'Шаблон' : 'Новый шаблон'}</h2>
+    <label>Название</label><input id="tn" value="${esc(draft.name)}" placeholder="Например: Грудь + трицепс">
+    ${draft.exercises.map((e, i) => `<div class="tex"><div class="th"><b>${esc(e.name)}</b><button class="btn del" data-rm="${i}" aria-label="Убрать">${ic('x')}</button></div>
+      <input data-plan="${i}" value="${esc(planText(e.plan))}" placeholder="вес×повторы: 80×8, 80×8, 80×6"></div>`).join('') || '<div class="empty">Добавьте упражнения</div>'}
+    <button class="btn ghost" id="tadd" style="margin-top:8px">${ic('plus')}Упражнение</button>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="tsave">Сохранить</button>${draft.id ? '<button class="btn ghost danger" id="tdel">Удалить шаблон</button>' : ''}<button class="btn ghost" id="tback">К списку</button></div>`, p => {
+    const sync = () => { draft.name = $('#tn').value; p.querySelectorAll('[data-plan]').forEach(i => { draft.exercises[+i.dataset.plan].plan = parsePlan(i.value); }); };
+    p.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sync(); draft.exercises.splice(+b.dataset.rm, 1); tplEditor(draft); });
+    $('#tadd').onclick = () => { sync(); addExercise(name => { draft.exercises.push({ name, plan: [] }); tplEditor(draft); }); };
+    $('#tback').onclick = tplList;
+    $('#tsave').onclick = () => {
+      sync(); const name = draft.name.trim();
+      if (!name) return $('#tn').focus();
+      if (!draft.exercises.length) return alert('Добавьте хотя бы одно упражнение');
+      if (draft.id) Object.assign(S.templates.find(x => x.id === draft.id), { name, exercises: draft.exercises }); else S.templates.push({ id: uid(), name, exercises: draft.exercises });
+      save(); tplList(); render();
+    };
+    if (draft.id) $('#tdel').onclick = () => { if (!confirm('Удалить шаблон?')) return; S.templates = S.templates.filter(x => x.id !== draft.id); save(); tplList(); render(); };
+  });
+}
+function saveAsTemplate() {
+  const w = getWorkout(false); if (!w || !w.exercises.length) return;
+  sheet(`<h2 class="sh">Сохранить как шаблон</h2><div class="dim small">Упражнения и подходы (вес × повторы) этой тренировки станут планом шаблона.</div>
+    <label>Название</label><input id="tn" placeholder="Например: Грудь + трицепс" autocomplete="off">
+    <div class="btns" style="margin-top:14px"><button class="btn" id="tsave">Сохранить</button></div>`, () => {
+    $('#tsave').onclick = () => {
+      const name = $('#tn').value.trim(); if (!name) return $('#tn').focus();
+      const exercises = w.exercises.map(e => ({ name: e.name, plan: (e.sets.length ? e.sets : e.plan || []).map(x => ({ w: x.w, r: x.r })) }));
+      const ex = S.templates.find(t => t.name.toLowerCase() === name.toLowerCase());
+      if (ex) { if (!confirm('Шаблон с таким названием уже есть. Обновить его?')) return; ex.exercises = exercises; } else S.templates.push({ id: uid(), name, exercises });
+      save(); closeSheet(); render();
+    };
   });
 }
 
