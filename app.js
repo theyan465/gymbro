@@ -53,6 +53,7 @@ const ICONS = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
   circle: '<circle cx="12" cy="12" r="9"/>',
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -196,7 +197,7 @@ function viewFood() {
     save(); render();
   };
   $('#addFood').onclick = pickFood;
-  $('#scan').onclick = scanBarcode;
+  $('#scan').onclick = () => scanBarcode();
   $('#ocr').onclick = ocrLabel;
   document.querySelectorAll('[data-delmeal]').forEach(b => b.onclick = () => { S.meals = S.meals.filter(m => m.id !== b.dataset.delmeal); save(); render(); });
 }
@@ -218,16 +219,33 @@ function pickFood() {
 
 function foodForm(pre) {
   const v = k => pre[k] ?? '';
-  sheet(`<h2 style="margin-top:0">${pre.quick ? 'Быстрая запись' : 'Новый продукт'} <small class="dim">(на 100 г)</small></h2>
-    <label>Название</label><input id="fn" value="${esc(pre.name || '')}">
+  sheet(`<h2 class="sh">${pre.quick ? 'Быстрая запись' : 'Новый продукт'} <small class="dim">(на 100 г)</small></h2>
+    ${pre.note ? `<div class="sub dim" style="margin-bottom:4px">${esc(pre.note)}</div>` : ''}
+    <label>Название</label><input id="fn" value="${esc(pre.name || '')}" placeholder="Например: Йогурт Danone">
     <div class="grid2"><div><label>Ккал</label><input id="fk" inputmode="decimal" value="${v('kcal')}"></div><div><label>Белки, г</label><input id="fp" inputmode="decimal" value="${v('p')}"></div>
     <div><label>Жиры, г</label><input id="ff" inputmode="decimal" value="${v('f')}"></div><div><label>Углеводы, г</label><input id="fc" inputmode="decimal" value="${v('c')}"></div></div>
+    <div id="fchk" class="sub dim" style="margin-top:6px"></div>
+    ${pre.quick ? '' : `<label>Штрихкод</label><div class="bcrow"><input id="fbc" inputmode="numeric" value="${esc(pre.barcode || '')}" placeholder="необязательно"><button class="btn ghost sm" id="fscan">${ic('scan')}Скан</button></div>
+    <button class="btn ghost sm" id="flabel" style="margin-top:8px">${ic('file')}Заполнить по фото этикетки</button>`}
     ${sb && user && !pre.quick ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" ${pre.barcode ? 'checked' : ''}> Добавить в общую базу</label>` : ''}
-    <div class="btns" style="margin-top:12px"><button class="btn" id="ok">Сохранить и выбрать</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
+    ${pre.raw ? `<details class="raw"><summary>Распознанный текст</summary><pre>${esc(pre.raw)}</pre></details>` : ''}
+    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить и выбрать</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
     $('#cancel').onclick = closeSheet;
+    const cur = () => ({ ...pre, note: undefined, name: $('#fn').value, kcal: $('#fk').value, p: $('#fp').value, f: $('#ff').value, c: $('#fc').value, barcode: $('#fbc') ? $('#fbc').value.trim() : pre.barcode });
+    const check = () => {
+      const k = num($('#fk').value), p = num($('#fp').value), f = num($('#ff').value), c = num($('#fc').value), calc = Math.round(4 * p + 4 * c + 9 * f), el = $('#fchk');
+      if (!(p || f || c)) { el.textContent = ''; return; }
+      const bad = k > 0 && Math.abs(calc - k) > Math.max(25, k * 0.2);
+      el.className = 'sub ' + (bad ? 'warn' : 'dim');
+      el.textContent = `По БЖУ: ≈ ${calc} ккал` + (bad ? ' — не сходится с введёнными, проверьте цифры' : '') + (!k ? ' (ккал подставятся сами)' : '');
+    };
+    ['#fk', '#fp', '#ff', '#fc'].forEach(id => { $(id).oninput = check; }); check();
+    if ($('#fscan')) $('#fscan').onclick = () => { const snap = cur(); scanBarcode(code => foodForm({ ...snap, barcode: code })); };
+    if ($('#flabel')) $('#flabel').onclick = () => ocrLabel(cur());
     $('#ok').onclick = () => {
-      const name = $('#fn').value.trim(); if (!name) return;
-      const food = { id: uid(), name, kcal: num($('#fk').value), p: num($('#fp').value), f: num($('#ff').value), c: num($('#fc').value), barcode: pre.barcode || '' };
+      const name = $('#fn').value.trim(); if (!name) { $('#fn').focus(); return; }
+      const p = num($('#fp').value), f = num($('#ff').value), c = num($('#fc').value);
+      const food = { id: uid(), name, kcal: num($('#fk').value) || Math.round(4 * p + 4 * c + 9 * f), p, f, c, barcode: $('#fbc') ? $('#fbc').value.trim() : (pre.barcode || '') };
       S.foods.push(food); save();
       if ($('#fshare') && $('#fshare').checked) shareFood(food);
       addMealSheet(food);
@@ -256,17 +274,51 @@ function stopScanner() {
   const s = scanner; scanner = null;
   try { Promise.resolve(s.stop()).then(() => s.clear()).catch(() => {}); } catch { /* scanner was not running */ }
 }
-function scanBarcode() {
-  sheet(`<h2 style="margin-top:0">Сканер штрихкода</h2><div id="reader"></div><div id="msg" class="dim" style="margin:8px 0">Наведите камеру на штрихкод…</div>
-    <div class="btns"><button class="btn ghost" id="manual">Ввести номер</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
-    $('#cancel').onclick = closeSheet;
-    $('#manual').onclick = () => { const c = prompt('Штрихкод (цифры)'); if (c) { stopScanner(); lookupBarcode(c.trim()); } };
-    if (typeof Html5Qrcode === 'undefined') { $('#msg').textContent = 'Сканер не загрузился'; return; }
-    scanner = new Html5Qrcode('reader');
+const bcFormats = () => { const F = window.Html5QrcodeSupportedFormats; return F ? [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE] : undefined; };
+// decode a barcode from a still photo (works well on iPhone: native autofocus and full resolution)
+async function decodeBarcodeFile(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
+  const holder = $('#rtmp'); if (!holder) return null;
+  const h = new Html5Qrcode('rtmp', { formatsToSupport: bcFormats(), verbose: false });
+  try {
+    for (const max of [1600, 1000, 2400]) {
+      let f = file;
+      if (bmp) {
+        const sc = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+        c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        f = new File([await new Promise(r => c.toBlob(r, 'image/png'))], 'b.png', { type: 'image/png' });
+      }
+      try { const r = await h.scanFile(f, false); if (r) return r; } catch { /* try next size */ }
+    }
+  } finally { try { h.clear(); } catch { /* ignore */ } }
+  return null;
+}
+function scanBarcode(cb) {
+  const onCode = typeof cb === 'function' ? cb : lookupBarcode;
+  const handle = code => { stopScanner(); onCode(code); };
+  sheet(`<h2 class="sh">Сканер штрихкода</h2><div id="reader"></div><div id="rtmp" hidden></div>
+    <div id="msg" class="dim" style="margin:8px 0">Наведите камеру на штрихкод, держите ровно на расстоянии 10–20 см. Не получается — снимите фото штрихкода.</div>
+    <div class="btns"><button class="btn" id="photo">${ic('camera')}Снять фото штрихкода</button><button class="btn ghost" id="manual">Ввести номер</button></div>
+    <input type="file" id="pfile" accept="image/*" capture="environment" hidden>`, () => {
+    $('#manual').onclick = () => { const c = prompt('Штрихкод (цифры)'); if (c && c.trim()) handle(c.trim()); };
+    $('#photo').onclick = () => $('#pfile').click();
+    $('#pfile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      stopScanner(); $('#msg').textContent = 'Распознаю штрихкод…';
+      const code = await decodeBarcodeFile(f).catch(() => null);
+      if (code) return handle(code);
+      $('#msg').innerHTML = 'Не нашёл штрихкод на фото. Снимите ближе и ровно, чтобы он занимал большую часть кадра. <button class="btn ghost sm" id="again">Попробовать снова</button>';
+      $('#again').onclick = () => scanBarcode(onCode);
+    };
+    if (typeof Html5Qrcode === 'undefined') { $('#msg').textContent = 'Живой сканер не загрузился — снимите фото штрихкода.'; return; }
+    scanner = new Html5Qrcode('reader', { formatsToSupport: bcFormats(), verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
     let done = false;
-    scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 140 } }, code => {
-      if (done) return; done = true; stopScanner(); lookupBarcode(code);
-    }).catch(err => { $('#msg').textContent = 'Нет доступа к камере: ' + err; });
+    scanner.start({ facingMode: 'environment' }, {
+      fps: 12,
+      qrbox: (w, h) => ({ width: Math.floor(w * 0.9), height: Math.floor(Math.min(h * 0.6, w * 0.45)) }),
+      videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] },
+    }, code => { if (done) return; done = true; handle(code); }, () => {})
+      .catch(err => { $('#msg').textContent = 'Камера недоступна (' + (err && err.message || err) + '). Разрешите доступ к камере в настройках Safari или снимите фото штрихкода.'; });
   });
 }
 async function lookupBarcode(code) {
@@ -277,62 +329,123 @@ async function lookupBarcode(code) {
     const { data } = await sb.from('shared_foods').select('*').eq('barcode', code).maybeSingle();
     if (data) return addMealSheet(adoptShared(data));
   }
+  let found = null;
   try {
     const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments`);
     const j = await r.json();
-    if (j.status !== 1) throw new Error('not found');
-    const n = j.product.nutriments || {};
-    const kcal = n['energy-kcal_100g'] ?? (n['energy_100g'] ? n['energy_100g'] / 4.184 : 0);
-    const name = [j.product.product_name, j.product.brands].filter(Boolean).join(' — ') || code;
-    foodForm({ name, kcal: Math.round(kcal), p: r1(n.proteins_100g || 0), f: r1(n.fat_100g || 0), c: r1(n.carbohydrates_100g || 0), barcode: code });
-  } catch {
-    sheet(`<div class="empty">Товар ${esc(code)} не найден или нет сети.</div><div class="btns"><button class="btn" id="m">Ввести вручную</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
-      $('#m').onclick = () => foodForm({ barcode: code }); $('#cancel').onclick = closeSheet;
-    });
-  }
+    if (j.status === 1) {
+      const n = j.product.nutriments || {};
+      const kcal = n['energy-kcal_100g'] ?? (n['energy_100g'] ? n['energy_100g'] / 4.184 : 0);
+      found = { name: [j.product.product_name, j.product.brands].filter(Boolean).join(' — '), kcal: Math.round(kcal), p: r1(n.proteins_100g || 0), f: r1(n.fat_100g || 0), c: r1(n.carbohydrates_100g || 0), barcode: code };
+    }
+  } catch { /* offline or not found */ }
+  if (found && (found.kcal || found.p || found.f || found.c)) return foodForm(found);
+  const pre = { name: found ? found.name : '', barcode: code };
+  sheet(`<h2 class="sh">${found ? 'Нет данных о КБЖУ' : 'Товар не найден'}</h2>
+    <div class="dim">${found ? `Нашёл «${esc(found.name)}», но без КБЖУ.` : `Штрихкода ${esc(code)} нет в базах или нет сети.`} Сфотографируйте таблицу пищевой ценности на упаковке, потом введёте название, и продукт сохранится вместе со штрихкодом.</div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="lab">${ic('file')}Сфотографировать этикетку</button><button class="btn ghost" id="m">Ввести вручную</button></div>`, () => {
+    $('#lab').onclick = () => ocrLabel(pre); $('#m').onclick = () => foodForm(pre);
+  });
 }
 
-// OCR of nutrition label (Tesseract.js, loaded on demand; needs internet on first use)
+// OCR of a nutrition label (Tesseract.js "best" models, loaded on demand; needs internet on first use, then cached)
+const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0_best';
 function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
-function parseLabel(text) {
-  const t = text.toLowerCase().replace(/,/g, '.').replace(/[|]/g, '1');
-  const grab = (words, max = 2000) => {
-    for (const w of words) {
-      const re = new RegExp('(?:' + w + ')[^0-9\\n]{0,25}(\\d+(?:\\.\\d+)?)\\s*(?:g|г|гр|kcal|ккал|kj|кдж)?', 'g');
-      const m = re.exec(t); if (m && parseFloat(m[1]) <= max) return parseFloat(m[1]);
+// grayscale + contrast stretch + adaptive threshold: helps with crumpled, shiny or unevenly lit packaging
+async function prepLabel(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const long = Math.max(bmp.width, bmp.height), sc = long > 2400 ? 2400 / long : long < 1400 ? Math.min(2, 1400 / long) : 1;
+  const w = Math.round(bmp.width * sc), h = Math.round(bmp.height * sc), n = w * h;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data, gray = new Uint8ClampedArray(n), hist = new Uint32Array(256);
+  for (let i = 0, j = 0; j < n; i += 4, j++) { const v = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0; gray[j] = v; hist[v]++; }
+  let lo = 0, hi = 255, acc = 0;
+  for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > n * 0.01) { lo = v; break; } }
+  acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > n * 0.01) { hi = v; break; } }
+  const span = Math.max(1, hi - lo);
+  for (let j = 0; j < n; j++) gray[j] = Math.max(0, Math.min(255, (gray[j] - lo) * 255 / span));
+  const integ = new Float64Array((w + 1) * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += gray[y * w + x]; integ[(y + 1) * (w + 1) + x + 1] = integ[y * (w + 1) + x + 1] + row; } }
+  const r = Math.max(8, Math.round(Math.min(w, h) / 30)), bin = new Uint8ClampedArray(n);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), area = (x1 - x0) * (y1 - y0);
+      const sum = integ[y1 * (w + 1) + x1] - integ[y0 * (w + 1) + x1] - integ[y1 * (w + 1) + x0] + integ[y0 * (w + 1) + x0];
+      bin[y * w + x] = gray[y * w + x] * area < sum * 0.88 ? 0 : 255;
     }
-    return 0;
+  }
+  const toCanvas = arr => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d'), id = x.createImageData(w, h); for (let j = 0, i = 0; j < n; j++, i += 4) { id.data[i] = id.data[i + 1] = id.data[i + 2] = arr[j]; id.data[i + 3] = 255; } x.putImageData(id, 0, 0); return cv; };
+  return { gray: toCanvas(gray), bin: toCanvas(bin) };
+}
+// fix typical OCR confusions inside number-like tokens (O→0, l/I/|→1, S→5, B→8)
+const fixNum = t => (/\d/.test(t) && /^[\dOoОоlI|SB.,<>]+$/.test(t)) ? t.replace(/[OoОо]/g, '0').replace(/[lI|]/g, '1').replace(/S/g, '5').replace(/B/g, '8') : t;
+function parseLabel(text) {
+  const lines = text.split(/\n+/).map(l => l.trim().split(/\s+/).map(fixNum).join(' ').toLowerCase().replace(/(\d)\s*,\s*(\d)/g, '$1.$2')).filter(Boolean);
+  const SKIP_FAT = /насыщ|saturat|gesätt|mono|поли|trans|транс|davon|из них|of which|в т\.?\s?ч|ненасыщ/;
+  const SKIP_CARB = /сахар|sugar|zucker|azúcar|sucres|цукр|davon|из них|of which|в т\.?\s?ч|клетчат|волокн|fibre|fiber|ballast|polyol|полиол/;
+  // returns { v, int } — int = the decimal separator may have been lost by OCR ("71" instead of "7,1")
+  const first = (kw, skip) => {
+    for (const l of lines) {
+      const m = kw.exec(l); if (!m || (skip && skip.test(l))) continue;
+      const nm = /(\d+(?:\.\d+)?)(?!\d*\s*%)/.exec(l.slice(m.index + m[0].length)); if (!nm) continue;
+      const v = parseFloat(nm[1]), int = !nm[1].includes('.');
+      if (v <= 100 || (int && v <= 1000)) return { v, int };
+    }
+    return null;
   };
-  let kcal = 0;
-  const km = t.match(/(\d+(?:\.\d+)?)\s*(?:kcal|ккал|cal)/);
-  if (km) kcal = parseFloat(km[1]);
-  else { const kj = t.match(/(\d+(?:\.\d+)?)\s*(?:kj|кдж)/); if (kj) kcal = Math.round(parseFloat(kj[1]) / 4.184); }
+  const all = lines.join('\n'); let kcal = 0;
+  const km = all.match(/(\d+(?:\.\d+)?)\s*(?:kcal|ккал|ккa|kcai|kca1)/) || all.match(/(?:kcal|ккал)\D{0,6}(\d+(?:\.\d+)?)/);
+  if (km && parseFloat(km[1]) <= 950) kcal = parseFloat(km[1]);
+  else { const kj = all.match(/(\d+(?:\.\d+)?)\s*(?:kj|кдж|k[jJ])/); if (kj) kcal = Math.round(parseFloat(kj[1]) / 4.184); }
   return {
     kcal: Math.round(kcal),
-    p: grab(['белк\\w*', 'protein\\w*', 'eiwei\\w*', 'prot[ée]ines?', 'prote[ií]nas?', 'białk\\w*'], 100),
-    f: grab(['жир\\w*', 'fat', 'fett', 'lipides', 'grasas?', 'tłuszcz\\w*'], 100),
-    c: grab(['углевод\\w*', 'carbohydrate\\w*', 'carbs?', 'kohlenhydrate', 'glucides', 'hidratos', 'węglowodany'], 100),
+    p: first(/белк\S*|protein\S*|eiwei\S*|prot[ée]ines?|prote[ií]nas?|białk\S*|білк\S*/),
+    f: first(/жир\S*|fat\b|fett\b|lipides|grasas?|tłuszcz\S*/, SKIP_FAT),
+    c: first(/углевод\S*|carbohydrate\S*|carbs?\b|kohlenhydrate|glucides|hidratos|węglowodany|вуглевод\S*/, SKIP_CARB),
   };
 }
-function ocrLabel() {
-  sheet(`<h2 style="margin-top:0">Фото этикетки КБЖУ</h2>
-    <div class="dim">Сфотографируйте таблицу «на 100 г». Распознавание на устройстве; при первом запуске нужен интернет (~10 МБ языковых данных).</div>
-    <label>Языки</label><select id="lang"><option value="rus+eng">Русский + English</option><option value="eng">English</option><option value="eng+deu">English + Deutsch</option><option value="eng+fra">English + Français</option><option value="eng+spa">English + Español</option><option value="eng+pol">English + Polski</option><option value="eng+ukr">English + Українська</option></select>
-    <input id="file" type="file" accept="image/*" capture="environment" style="margin-top:10px"><div id="msg" class="dim" style="margin:8px 0"></div>
-    <div class="btns"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
-    $('#cancel').onclick = closeSheet;
+// combine several OCR passes; when a macro looks like it lost its decimal point, pick the reading that best matches the calories
+function mergeLabels(list) {
+  const kcal = list.map(x => x.kcal).find(Boolean) || 0, pick = k => { const c = list.map(x => x[k]).filter(Boolean); return c.find(o => !o.int) || c[0] || null; };
+  const raw = { p: pick('p'), f: pick('f'), c: pick('c') };
+  const cand = o => { if (!o) return [0]; const a = []; if (o.v <= 100) a.push(o.v); if (o.int && o.v >= 10 && o.v / 10 <= 100) a.push(r1(o.v / 10)); return a.length ? a : [0]; };
+  let best = null;
+  for (const p of cand(raw.p)) for (const f of cand(raw.f)) for (const c of cand(raw.c)) {
+    const moved = (raw.p && p !== raw.p.v) + (raw.f && f !== raw.f.v) + (raw.c && c !== raw.c.v);
+    const score = (kcal ? Math.abs(4 * p + 4 * c + 9 * f - kcal) : 0) + moved * 3;
+    if (!best || score < best.score) best = { p, f, c, score };
+  }
+  const out = { kcal, p: best.p, f: best.f, c: best.c };
+  if (!out.kcal && (out.p || out.f || out.c)) out.kcal = Math.round(4 * out.p + 4 * out.c + 9 * out.f);
+  return out;
+}
+function ocrLabel(pre = {}) {
+  const lang0 = localStorage.getItem('gymbro.ocrLang') || 'rus+eng';
+  const langs = [['rus+eng', 'Русский + English'], ['eng', 'English'], ['eng+deu', 'English + Deutsch'], ['eng+fra', 'English + Français'], ['eng+spa', 'English + Español'], ['eng+pol', 'English + Polski'], ['eng+ukr', 'English + Українська'], ['eng+tur', 'English + Türkçe'], ['eng+ita', 'English + Italiano']];
+  sheet(`<h2 class="sh">Фото этикетки КБЖУ</h2>
+    <div class="dim small">Снимите таблицу «на 100 г» крупно, ровно и без бликов — чтобы она занимала почти весь кадр. Распознавание на устройстве; при первом запуске нужен интернет (до ~30 МБ языковых данных, дальше сохраняются).</div>
+    <label>Языки</label><select id="lang">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <input id="file" type="file" accept="image/*" capture="environment" style="margin-top:10px"><div id="msg" class="dim" style="margin:8px 0"></div>`, () => {
     $('#file').onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
-      const msg = $('#msg'); msg.textContent = 'Загружаю модель…';
+      const msg = $('#msg'), lang = $('#lang').value; localStorage.setItem('gymbro.ocrLang', lang);
+      msg.textContent = 'Готовлю изображение…';
       try {
-        if (typeof Tesseract === 'undefined') await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
-        const { data } = await Tesseract.recognize(f, $('#lang').value, { logger: m => { if (m.status) msg.textContent = m.status + ' ' + Math.round((m.progress || 0) * 100) + '%'; } });
-        const p = parseLabel(data.text);
-        foodForm({ name: '', ...p });
-        const note = document.createElement('div'); note.className = 'dim'; note.style.margin = '8px 0';
-        note.textContent = 'Проверьте значения — распознавание может ошибаться.'; $('#sheet .panel h2').after(note);
+        const prep = await prepLabel(f);
+        if (typeof Tesseract === 'undefined') { msg.textContent = 'Загружаю распознавание…'; await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'); }
+        const worker = await Tesseract.createWorker(lang, 1, { langPath: TESS_LANG_PATH, logger: m => { if (m.status) msg.textContent = m.status + ' ' + Math.round((m.progress || 0) * 100) + '%'; } });
+        const texts = [];
+        try {
+          await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' }); texts.push((await worker.recognize(prep.bin)).data.text);
+          await worker.setParameters({ tessedit_pageseg_mode: '11' }); texts.push((await worker.recognize(prep.gray)).data.text);
+        } finally { await worker.terminate(); }
+        const res = mergeLabels(texts.map(parseLabel));
+        const keep = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { keep[k] = res[k] || pre[k] || ''; });
+        foodForm({ ...pre, ...keep, name: pre.name || '', note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.', raw: texts.join('\n———\n') });
       } catch (err) { msg.textContent = 'Не удалось распознать: ' + (err && err.message || err); }
     };
   });
