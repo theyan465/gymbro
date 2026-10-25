@@ -67,7 +67,7 @@ function sheet(html, mount) {
   mount && mount(p);
   return p;
 }
-function closeSheet() { stopScanner(); $('#sheet').hidden = true; $('#sheet .panel').innerHTML = ''; }
+function closeSheet() { $('#sheet').hidden = true; $('#sheet .panel').innerHTML = ''; stopScanner(); }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
 
 // ---------- chart ----------
@@ -250,7 +250,11 @@ function addMealSheet(food) {
 
 // barcode
 let scanner = null;
-function stopScanner() { if (scanner) { const s = scanner; scanner = null; s.stop().then(() => s.clear()).catch(() => {}); } }
+function stopScanner() {
+  if (!scanner) return;
+  const s = scanner; scanner = null;
+  try { Promise.resolve(s.stop()).then(() => s.clear()).catch(() => {}); } catch { /* scanner was not running */ }
+}
 function scanBarcode() {
   sheet(`<h2 style="margin-top:0">Сканер штрихкода</h2><div id="reader"></div><div id="msg" class="dim" style="margin:8px 0">Наведите камеру на штрихкод…</div>
     <div class="btns"><button class="btn ghost" id="manual">Ввести номер</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
@@ -374,18 +378,38 @@ function viewTrain() {
   document.querySelectorAll('[data-delset]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.delset.split('.').map(Number); w.exercises[i].sets.splice(j, 1); save(); render(); });
   document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { w.exercises.splice(+b.dataset.delex, 1); save(); render(); } });
 }
-const allExNames = () => [...new Set([...exNames(), ...sharedEx])].sort((a, b) => a.localeCompare(b));
+const BASE_EX = ['Жим лёжа', 'Жим лёжа на наклонной скамье', 'Жим гантелей лёжа', 'Жим гантелей на наклонной скамье', 'Разводка гантелей', 'Отжимания', 'Отжимания на брусьях',
+  'Присед со штангой', 'Фронтальный присед', 'Жим ногами', 'Выпады', 'Болгарские сплит-приседы', 'Разгибания ног', 'Сгибания ног', 'Румынская тяга', 'Ягодичный мостик', 'Подъём на носки',
+  'Становая тяга', 'Тяга штанги в наклоне', 'Тяга гантели одной рукой', 'Тяга верхнего блока', 'Тяга нижнего блока', 'Подтягивания', 'Гиперэкстензия',
+  'Жим стоя', 'Жим гантелей сидя', 'Махи гантелей в стороны', 'Махи в наклоне', 'Тяга к подбородку', 'Шраги',
+  'Подъём штанги на бицепс', 'Подъём гантелей на бицепс', 'Молотки', 'Французский жим', 'Разгибания на трицепс на блоке', 'Скручивания', 'Подъём ног в висе', 'Планка'];
+const allExNames = () => {
+  const use = {}; S.workouts.forEach(w => w.exercises.forEach(e => { use[e.name] = (use[e.name] || 0) + 1; }));
+  const mine = Object.keys(use).sort((a, b) => use[b] - use[a]);
+  const rest = [...new Set([...sharedEx, ...BASE_EX])].filter(n => !use[n]).sort((a, b) => a.localeCompare(b));
+  return [...mine, ...rest];
+};
 const exNames = () => [...new Set(S.workouts.flatMap(w => w.exercises.map(e => e.name)))].sort();
 function addExercise() {
-  sheet(`<h2 style="margin-top:0">Упражнение</h2><input id="n" list="exl" placeholder="Например: Жим лёжа" autocomplete="off"><datalist id="exl">${allExNames().map(n => `<option value="${esc(n)}">`).join('')}</datalist>
-    <div class="chips" style="margin-top:10px">${['Жим лёжа', 'Присед', 'Становая тяга', 'Жим стоя', 'Подтягивания', 'Тяга штанги в наклоне'].map(n => `<button class="chip" data-n="${n}">${n}</button>`).join('')}</div>
-    <div class="btns" style="margin-top:12px"><button class="btn" id="ok">Добавить</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
-    const add = name => { name = name.trim(); if (!name) return; getWorkout(true).exercises.push({ name, sets: [] }); save(); shareExercise(name); closeSheet(); render(); };
-    $('#ok').onclick = () => add($('#n').value); $('#cancel').onclick = closeSheet;
-    document.querySelectorAll('.chip[data-n]').forEach(c => c.onclick = () => add(c.dataset.n));
+  const all = allExNames();
+  const add = name => { name = name.trim(); if (!name) return; getWorkout(true).exercises.push({ name, sets: [] }); save(); shareExercise(name); closeSheet(); render(); };
+  sheet(`<h2 class="sh">Упражнение</h2><input id="n" placeholder="Поиск или новое название" autocomplete="off" autocapitalize="sentences"><div id="exl" style="margin:8px 0"></div>
+    <div class="btns"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    const draw = raw => {
+      const q = raw.trim().toLowerCase();
+      const list = all.filter(n => n.toLowerCase().includes(q)).slice(0, 40);
+      const exact = all.some(n => n.toLowerCase() === q);
+      $('#exl').innerHTML = (q && !exact ? `<div class="row pick" data-new="1"><div class="main">Создать «${esc(raw.trim())}»</div><span class="btn sm">${ic('plus')}</span></div>` : '') +
+        list.map(n => `<div class="row pick" data-n="${esc(n)}"><div class="main">${esc(n)}</div><span class="btn sm ghost">${ic('plus')}</span></div>`).join('') +
+        (!list.length && !q ? '<div class="empty">Начните вводить название</div>' : '');
+      document.querySelectorAll('#exl [data-n]').forEach(r => r.onclick = () => add(r.dataset.n));
+      document.querySelectorAll('#exl [data-new]').forEach(r => r.onclick = () => add(raw));
+    };
+    draw(''); $('#n').oninput = e => draw(e.target.value);
+    $('#n').onkeydown = e => { if (e.key === 'Enter') add($('#n').value); };
+    $('#cancel').onclick = closeSheet;
   });
 }
-
 
 // ---------- vitamins ----------
 const WD = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'], WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
