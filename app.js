@@ -63,7 +63,8 @@ let tab = 'home', day = today(), statSel = { ex: null, m: 'weight' }, animate = 
 // ---------- sheet ----------
 function sheet(html, mount) {
   const el = $('#sheet'), p = $('.panel', el);
-  p.innerHTML = html; el.hidden = false;
+  p.innerHTML = `<div class="sheet-bar"><button class="sheet-x" aria-label="Закрыть">${ic('x')}</button></div>` + html; el.hidden = false;
+  $('.sheet-x', p).onclick = closeSheet;
   mount && mount(p);
   return p;
 }
@@ -285,8 +286,8 @@ async function lookupBarcode(code) {
     const name = [j.product.product_name, j.product.brands].filter(Boolean).join(' — ') || code;
     foodForm({ name, kcal: Math.round(kcal), p: r1(n.proteins_100g || 0), f: r1(n.fat_100g || 0), c: r1(n.carbohydrates_100g || 0), barcode: code });
   } catch {
-    sheet(`<div class="empty">Товар ${esc(code)} не найден или нет сети.</div><div class="btns"><button class="btn" id="m">Ввести вручную</button><button class="btn ghost" id="c">Закрыть</button></div>`, () => {
-      $('#m').onclick = () => foodForm({ barcode: code }); $('#c').onclick = closeSheet;
+    sheet(`<div class="empty">Товар ${esc(code)} не найден или нет сети.</div><div class="btns"><button class="btn" id="m">Ввести вручную</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+      $('#m').onclick = () => foodForm({ barcode: code }); $('#cancel').onclick = closeSheet;
     });
   }
 }
