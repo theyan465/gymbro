@@ -178,3 +178,11 @@ canvas.chart{width:100%;height:180px;display:block}
 .wrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
 
 .row.pick{cursor:pointer}.row.pick:active{opacity:.6}
+
+.sheet-bar{position:sticky;top:0;height:0;z-index:3;display:flex;justify-content:flex-end;overflow:visible}
+.sheet-x{width:34px;height:34px;margin:-10px -4px 0 0;border-radius:50%;border:1px solid var(--line);background:var(--card2);color:var(--txt);display:grid;place-items:center;padding:0;transition:transform .15s var(--ease)}
+.sheet-x:active{transform:scale(.9)}
+.sheet-x .ic{width:18px;height:18px}
+#sheet h2{padding-right:44px}
+#sheet #cancel{display:none}
+#sheet .btns:not(:has(button:not(#cancel))){display:none}
