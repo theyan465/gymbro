@@ -2,9 +2,13 @@
 
 // ---------- storage ----------
 const KEY = 'gymbro.v1';
-const DEFAULTS = { foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, workouts: [], body: [], updatedAt: 0 };
+const DEFAULTS = {
+  foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
+  trainDays: [1, 3, 5], dayType: {}, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
+};
+const fresh = () => structuredClone(DEFAULTS);
 let S;
-try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { S = structuredClone(DEFAULTS); }
+try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { S = fresh(); }
 function save() { S.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(); }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
@@ -20,7 +24,37 @@ const shiftDay = (k, n) => { const d = new Date(k + 'T12:00:00'); d.setDate(d.ge
 const fmtDay = k => k === today() ? 'Сегодня' : new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
 const e1rm = (w, r) => r <= 0 ? 0 : r === 1 ? w : w * (1 + r / 30); // Epley
 
-let tab = 'food', day = today(), statSel = { ex: null, m: 'weight' };
+
+// ---------- icons ----------
+const ICONS = {
+  utensils: '<path d="M3 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6a2 2 0 0 0 2 2h3zm0 0v7"/>',
+  dumbbell: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>',
+  pill: '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7z"/><path d="m8.5 8.5 7 7"/>',
+  ruler: '<path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.4 2.4 0 0 1 0-3.4l2.6-2.6a2.4 2.4 0 0 1 3.4 0z"/><path d="m14.5 12.5 2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2"/>',
+  trend: '<path d="M22 7 13.5 15.5l-5-5L2 17"/><path d="M16 7h6v6"/>',
+  sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M8 7v10M12 7v10M17 7v10"/>',
+  file: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  crown: '<path d="m2 8 4 4 6-8 6 8 4-4-2 12H4z"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3"/>',
+  award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
+};
+const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+document.querySelectorAll('[data-ic]').forEach(e => { e.innerHTML = ic(e.dataset.ic); });
+
+let tab = 'food', day = today(), statSel = { ex: null, m: 'weight' }, animate = true, lastToday = today(), lastVit = null;
 
 // ---------- sheet ----------
 function sheet(html, mount) {
@@ -67,27 +101,43 @@ const ts = k => new Date(k + 'T12:00:00').getTime();
 
 // ---------- nutrition ----------
 const sumMeals = k => S.meals.filter(m => m.date === k).reduce((a, m) => (a.kcal += m.kcal, a.p += m.p, a.f += m.f, a.c += m.c, a), { kcal: 0, p: 0, f: 0, c: 0 });
+const wday = k => new Date(k + 'T12:00:00').getDay();
+const autoTrain = k => S.workouts.some(w => w.date === k && w.exercises.some(e => e.sets.length)) || S.trainDays.includes(wday(k));
+function dayInfo(k) {
+  if (S.dayType[k] !== undefined) return { train: S.dayType[k], src: 'вручную' };
+  if (S.workouts.some(w => w.date === k && w.exercises.some(e => e.sets.length))) return { train: true, src: 'есть тренировка' };
+  return { train: S.trainDays.includes(wday(k)), src: 'по расписанию' };
+}
+const goalFor = k => dayInfo(k).train ? S.goals : S.goalsRest;
 const per = (food, g) => ({ kcal: food.kcal * g / 100, p: food.p * g / 100, f: food.f * g / 100, c: food.c * g / 100 });
 
 function viewFood() {
-  const t = sumMeals(day), g = S.goals, meals = S.meals.filter(m => m.date === day);
+  const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
   const pct = (v, goal) => Math.min(100, goal ? v / goal * 100 : 0);
-  const mac = (n, v, goal, c) => `<div class="macro"><b style="color:var(--${c})">${Math.round(v)}<small>/${goal}</small></b><small>${n}</small><div class="bar"><i style="width:${pct(v, goal)}%;background:var(--${c})"></i></div></div>`;
+  const C = 2 * Math.PI * 52, over = t.kcal > g.kcal, off = C * (1 - pct(t.kcal, g.kcal) / 100);
+  const mac = (n, v, goal, c) => `<div class="mac"><div class="mh"><span>${n}</span><b>${Math.round(v)}<small> / ${goal} г</small></b></div><div class="bar"><i style="width:${pct(v, goal)}%;background:var(--${c})"></i></div></div>`;
   $('#view').innerHTML = `
-    <div class="card">
-      <div class="big">${Math.round(t.kcal)} <small class="dim" style="font-size:15px">/ ${g.kcal} ккал</small></div>
-      <div class="bar"><i style="width:${pct(t.kcal, g.kcal)}%"></i></div>
-      <div class="dim" style="margin:6px 0 10px">Осталось: ${Math.round(g.kcal - t.kcal)} ккал</div>
-      <div class="grid4" style="grid-template-columns:repeat(3,1fr)">${mac('Белки', t.p, g.p, 'p')}${mac('Жиры', t.f, g.f, 'f')}${mac('Углеводы', t.c, g.c, 'c')}</div>
+    <button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>
+    <div class="card hero">
+      <div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+        <circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg ${over ? 'over' : ''}" cx="60" cy="60" r="52" style="--len:${C};stroke-dasharray:${C};stroke-dashoffset:${off}"/></svg>
+        <div class="ringtxt"><b>${Math.round(t.kcal)}</b><small>из ${g.kcal} ккал</small></div></div>
+      <div class="macs">${mac('Белки', t.p, g.p, 'p')}${mac('Жиры', t.f, g.f, 'f')}${mac('Углеводы', t.c, g.c, 'c')}
+        <div class="left">${over ? 'Превышено на ' + Math.round(t.kcal - g.kcal) : 'Осталось ' + Math.round(g.kcal - t.kcal)} ккал</div></div>
     </div>
-    <div class="btns" style="margin-bottom:12px">
-      <button class="btn" id="addFood">+ Добавить</button>
-      <button class="btn ghost" id="scan">📷 Штрихкод</button>
-      <button class="btn ghost" id="ocr">📄 Этикетка</button>
+    <div class="actions">
+      <button class="btn" id="addFood">${ic('plus')}Добавить</button>
+      <button class="btn ghost" id="scan">${ic('scan')}Штрихкод</button>
+      <button class="btn ghost" id="ocr">${ic('file')}Этикетка</button>
     </div>
     <div class="card"><h2>Приёмы пищи</h2>
-      ${meals.length ? meals.map(m => `<div class="row"><div class="main">${esc(m.name)}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">✕</button></div>`).join('') : '<div class="empty">Пока пусто</div>'}
+      ${meals.length ? meals.map(m => `<div class="row"><div class="main">${esc(m.name)}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Пока пусто</div>'}
     </div>`;
+  $('#dt').onclick = () => {
+    const want = !dt.train;
+    if (want === autoTrain(day)) delete S.dayType[day]; else S.dayType[day] = want;
+    save(); render();
+  };
   $('#addFood').onclick = pickFood;
   $('#scan').onclick = scanBarcode;
   $('#ocr').onclick = ocrLabel;
@@ -253,9 +303,9 @@ function viewTrain() {
     ${exs.map((e, i) => {
       const hist = exHistory(e.name, day)[0], prev = bestE1(e.name, day);
       const best = Math.max(0, ...e.sets.map(s => e1rm(s.w, s.r)));
-      return `<div class="card"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">✕</button></h2>
+      return `<div class="card"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">${ic('x')}</button></h2>
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
-        ${e.sets.map((s, j) => `<div class="row"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">✕</button></div>`).join('')}
+        ${e.sets.map((s, j) => `<div class="row"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
         <div class="grid4" style="grid-template-columns:1fr 1fr auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${e.sets.length ? e.sets[e.sets.length - 1].w : (hist ? hist.ex.sets[0].w : '')}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${e.sets.length ? e.sets[e.sets.length - 1].r : (hist ? hist.ex.sets[0].r : '')}"><button class="btn" data-addset="${i}">+</button></div>
         <div class="sub dim" style="margin-top:6px">Объём: ${Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0))} кг</div></div>`;
     }).join('') || '<div class="empty">В этот день тренировок нет</div>'}`;
@@ -279,12 +329,93 @@ function addExercise() {
   });
 }
 
+
+// ---------- vitamins ----------
+const WD = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'], WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const vitDue = (v, k) => v.created <= k && v.days.includes(wday(k));
+const vitTaken = (v, k) => (S.vitLog[k] || []).includes(v.id);
+function toggleVit(id) {
+  const a = S.vitLog[day] || (S.vitLog[day] = []), i = a.indexOf(id);
+  i >= 0 ? a.splice(i, 1) : a.push(id);
+  if (!a.length) delete S.vitLog[day];
+  lastVit = id; save(); render(); lastVit = null;
+}
+function vitStreak() {
+  let k = today(), n = 0;
+  for (let i = 0; i < 400; i++, k = shiftDay(k, -1)) {
+    const due = S.vitamins.filter(v => vitDue(v, k)); if (!due.length) continue;
+    if (due.every(v => vitTaken(v, k))) n++; else if (k !== today()) break;
+  }
+  return n;
+}
+const wdChips = sel => `<div class="wd">${WD_ORDER.map(d => `<button type="button" class="wdb ${sel.includes(d) ? 'on' : ''}" data-d="${d}">${WD[d]}</button>`).join('')}</div>`;
+const pickedDays = root => [...root.querySelectorAll('.wdb.on')].map(b => +b.dataset.d);
+function bindChips(root) { root.querySelectorAll('.wdb').forEach(b => b.onclick = () => b.classList.toggle('on')); }
+
+function viewVit() {
+  const due = S.vitamins.filter(v => vitDue(v, day)), other = S.vitamins.filter(v => !vitDue(v, day));
+  const done = due.filter(v => vitTaken(v, day)).length, st = vitStreak();
+  const row = (v, isDue) => `<div class="vit ${vitTaken(v, day) ? 'on' : ''} ${isDue ? '' : 'off'} ${lastVit === v.id ? 'pop' : ''}" data-vit="${v.id}">
+      <span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div>
+      <button class="btn del" data-editvit="${v.id}" aria-label="Изменить">${ic('edit')}</button></div>`;
+  // history: last 14 days
+  const days = []; for (let i = 13; i >= 0; i--) days.push(shiftDay(today(), -i));
+  const cell = (v, k) => {
+    const taken = vitTaken(v, k), d = vitDue(v, k);
+    const cls = taken ? 'ok' : d ? (k === today() ? 'pend' : 'miss') : 'none';
+    return `<i class="cell ${cls} ${k === day ? 'sel' : ''}" data-day="${k}"></i>`;
+  };
+  const pct30 = v => { let d = 0, t = 0, k = today(); for (let i = 0; i < 30; i++, k = shiftDay(k, -1)) { if (vitDue(v, k) && k <= today() && !(k === today() && !vitTaken(v, k))) { d++; if (vitTaken(v, k)) t++; } } return d ? Math.round(t / d * 100) : null; };
+  const hist = S.vitamins.length ? `<div class="card"><h2>История · 14 дней</h2>
+      <div class="heat hd">${days.map(k => `<small class="${k === today() ? 'tdy' : ''}">${WD[wday(k)][0]}</small>`).join('')}</div>
+      ${S.vitamins.map(v => { const p = pct30(v); return `<div class="hrow"><div class="hname"><span>${esc(v.name)}</span><small>${p === null ? '' : p + '% за 30 дн.'}</small></div><div class="heat">${days.map(k => cell(v, k)).join('')}</div></div>`; }).join('')}
+      <div class="legend"><span><i class="cell ok"></i>принято</span><span><i class="cell miss"></i>пропущено</span><span><i class="cell none"></i>не по расписанию</span></div></div>` : '';
+  $('#view').innerHTML = `
+    <div class="card hero2"><div><div class="big">${done}<small> / ${due.length}</small></div><div class="dim">${due.length ? (done === due.length ? 'Всё принято' : 'принято за ' + (day === today() ? 'сегодня' : fmtDay(day))) : 'на этот день ничего не запланировано'}</div></div>
+      <div class="streak">${ic('flame')}<b>${st}</b><small>дн. подряд</small></div>
+      <div class="bar wide"><i style="width:${due.length ? done / due.length * 100 : 0}%"></i></div></div>
+    <button class="btn full" id="addVit">${ic('plus')}Добавить витамин</button>
+    <div class="card"><h2>По расписанию</h2>${due.map(v => row(v, true)).join('') || '<div class="empty">Нет витаминов на этот день</div>'}</div>
+    ${other.length ? `<div class="card"><h2>Не по расписанию</h2>${other.map(v => row(v, false)).join('')}</div>` : ''}
+    ${hist}`;
+  $('#addVit').onclick = () => vitForm(null);
+  document.querySelectorAll('[data-vit]').forEach(r => r.onclick = () => toggleVit(r.dataset.vit));
+  document.querySelectorAll('[data-editvit]').forEach(b => b.onclick = e => { e.stopPropagation(); vitForm(S.vitamins.find(v => v.id === b.dataset.editvit)); });
+  document.querySelectorAll('.cell[data-day]').forEach(c => c.onclick = () => { day = c.dataset.day; render(); window.scrollTo(0, 0); });
+}
+function vitForm(v) {
+  const days = v ? v.days : [0, 1, 2, 3, 4, 5, 6];
+  sheet(`<h2 class="sh">${v ? 'Витамин' : 'Новый витамин'}</h2>
+    <label>Название</label><input id="vn" value="${esc(v ? v.name : '')}" placeholder="Например: Витамин D3">
+    <label>Дозировка</label><input id="vd" value="${esc(v ? v.dose : '')}" placeholder="1 таблетка, 2000 МЕ…">
+    <label>Когда принимать</label><input id="vw" value="${esc(v ? v.when : '')}" placeholder="Утром, с едой…">
+    <div class="chips" style="margin-top:6px">${['Утром', 'Днём', 'Вечером', 'С едой', 'Перед сном'].map(w => `<button class="chip" data-w="${w}">${w}</button>`).join('')}</div>
+    <label>Дни недели</label>${wdChips(days)}
+    <div class="chips" style="margin-top:8px"><button class="chip" data-set="all">Каждый день</button><button class="chip" data-set="work">Будни</button><button class="chip" data-set="end">Выходные</button></div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button>${v ? `<button class="btn ghost danger" id="del">Удалить</button>` : ''}<button class="btn ghost" id="cancel">Отмена</button></div>`, p => {
+    bindChips(p);
+    p.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { $('#vw').value = b.dataset.w; });
+    p.querySelectorAll('[data-set]').forEach(b => b.onclick = () => {
+      const set = { all: [0, 1, 2, 3, 4, 5, 6], work: [1, 2, 3, 4, 5], end: [0, 6] }[b.dataset.set];
+      p.querySelectorAll('.wdb').forEach(x => x.classList.toggle('on', set.includes(+x.dataset.d)));
+    });
+    $('#cancel').onclick = closeSheet;
+    $('#ok').onclick = () => {
+      const name = $('#vn').value.trim(), ds = pickedDays(p); if (!name) return; if (!ds.length) return alert('Выберите хотя бы один день');
+      const data = { name, dose: $('#vd').value.trim(), when: $('#vw').value.trim(), days: ds };
+      if (v) Object.assign(v, data); else S.vitamins.push({ id: uid(), created: today(), ...data });
+      save(); closeSheet(); render();
+    };
+    if (v) $('#del').onclick = () => { if (!confirm('Удалить витамин и его историю?')) return; S.vitamins = S.vitamins.filter(x => x.id !== v.id); Object.keys(S.vitLog).forEach(k => { S.vitLog[k] = S.vitLog[k].filter(i => i !== v.id); if (!S.vitLog[k].length) delete S.vitLog[k]; }); save(); closeSheet(); render(); };
+  });
+}
+
 // ---------- body ----------
 const MEAS = [['weight', 'Вес, кг'], ['waist', 'Талия'], ['chest', 'Грудь'], ['hips', 'Бёдра'], ['arm', 'Бицепс'], ['thigh', 'Бедро']];
 function viewBody() {
   const rows = [...S.body].sort((a, b) => b.date.localeCompare(a.date));
   $('#view').innerHTML = `<button class="btn" id="addB" style="margin-bottom:12px">+ Замер</button>
-    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ')}</div></div><button class="btn del" data-delb="${r.id}">✕</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
+    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ')}</div></div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
   $('#addB').onclick = () => {
     const last = rows[0] || {};
     sheet(`<h2 style="margin-top:0">Замер на ${fmtDay(day)}</h2><div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}${k === 'weight' ? '' : ', см'}</label><input inputmode="decimal" data-m="${k}" placeholder="${last[k] || ''}"></div>`).join('')}</div>
@@ -307,7 +438,7 @@ function viewStats() {
   const names = exNames(); if (!statSel.ex || !names.includes(statSel.ex)) statSel.ex = names[0] || null;
   $('#view').innerHTML = `
     <div class="card"><h2>Вес и замеры</h2><div class="chips">${MEAS.map(([k, n]) => `<button class="chip ${statSel.m === k ? 'on' : ''}" data-m="${k}">${n.replace(', кг', '')}</button>`).join('')}</div><canvas class="chart" id="c1"></canvas></div>
-    <div class="card"><h2>Калории за 14 дней <small>цель ${S.goals.kcal}</small></h2><canvas class="chart" id="c2"></canvas></div>
+    <div class="card"><h2>Калории за 14 дней <small>цель сегодня ${goalFor(today()).kcal}</small></h2><canvas class="chart" id="c2"></canvas></div>
     <div class="card"><h2>Упражнение</h2>${names.length ? `<div class="chips">${names.map(n => `<button class="chip ${statSel.ex === n ? 'on' : ''}" data-e="${esc(n)}">${esc(n)}</button>`).join('')}</div>
       <div class="dim" style="margin:4px 0">Расчётный 1ПМ (лучший подход за день), кг</div><canvas class="chart" id="c3"></canvas>
       <div class="dim" style="margin:4px 0">Объём за тренировку, кг</div><canvas class="chart" id="c4"></canvas><div id="prs" class="sub dim"></div>` : '<div class="empty">Нет данных по тренировкам</div>'}</div>`;
@@ -315,7 +446,7 @@ function viewStats() {
   document.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { statSel.ex = b.dataset.e; render(); });
   chart($('#c1'), S.body.filter(b => b[statSel.m]).map(b => ({ x: ts(b.date), y: b[statSel.m] })).sort((a, b) => a.x - b.x), { color: '#60a5fa' });
   const days = []; for (let i = 13; i >= 0; i--) { const k = shiftDay(today(), -i); days.push({ x: ts(k), y: sumMeals(k).kcal }); }
-  chart($('#c2'), days, { bars: true, zero: true, line: S.goals.kcal });
+  chart($('#c2'), days, { bars: true, zero: true, line: goalFor(today()).kcal });
   if (statSel.ex) {
     const pts = [], vols = [];
     S.workouts.slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(w => w.exercises.filter(e => e.name === statSel.ex && e.sets.length).forEach(e => {
@@ -330,16 +461,23 @@ function viewStats() {
 
 // ---------- more ----------
 function viewMore() {
-  const g = S.goals;
-  $('#view').innerHTML = accountCard() + `<div class="card"><h2>Цели на день</h2><div class="grid2">
-    <div><label>Ккал</label><input inputmode="numeric" id="gk" value="${g.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" id="gp" value="${g.p}"></div>
-    <div><label>Жиры, г</label><input inputmode="numeric" id="gf" value="${g.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" id="gc" value="${g.c}"></div></div>
-    <button class="btn" id="sg" style="margin-top:10px">Сохранить</button></div>
-    <div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-delfood="${f.id}">✕</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>
-    <div class="card"><h2>Резервная копия</h2><div class="dim" style="margin-bottom:8px">Данные хранятся только в этом браузере. Делайте экспорт время от времени.</div>
+  const goalFields = (p, v) => `<div class="grid2"><div><label>Ккал</label><input inputmode="numeric" id="${p}k" value="${v.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" id="${p}p" value="${v.p}"></div>
+    <div><label>Жиры, г</label><input inputmode="numeric" id="${p}f" value="${v.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" id="${p}c" value="${v.c}"></div></div>`;
+  $('#view').innerHTML = accountCard() + `<div class="card"><h2><span class="hic">${ic('bolt')}Норма: тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
+    <div class="card"><h2><span class="hic">${ic('moon')}Норма: день отдыха</span></h2>${goalFields('r', S.goalsRest)}</div>
+    <div class="card"><h2>Тренировочные дни недели</h2><div id="tdays">${wdChips(S.trainDays)}</div>
+    <div class="dim small" style="margin:8px 0">День также считается тренировочным, если в нём записана тренировка. Тип дня можно переключить вручную на вкладке «Питание».</div>
+    <button class="btn" id="sg">Сохранить цели</button></div>
+    <div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>
+    <div class="card"><h2>Резервная копия</h2><div class="dim" style="margin-bottom:8px">Данные хранятся в вашем аккаунте. Экспорт — дополнительная копия на всякий случай.</div>
     <div class="btns"><button class="btn ghost" id="exp">Экспорт JSON</button><button class="btn ghost" id="imp">Импорт</button></div><input type="file" id="impf" accept="application/json" hidden></div>`;
   bindAccount();
-  $('#sg').onclick = () => { S.goals = { kcal: num($('#gk').value), p: num($('#gp').value), f: num($('#gf').value), c: num($('#gc').value) }; save(); alert('Сохранено'); };
+  bindChips($('#tdays'));
+  $('#sg').onclick = () => {
+    const rd = p => ({ kcal: num($(`#${p}k`).value), p: num($(`#${p}p`).value), f: num($(`#${p}f`).value), c: num($(`#${p}c`).value) });
+    S.goals = rd('g'); S.goalsRest = rd('r'); S.trainDays = pickedDays($('#tdays')); save();
+    const b = $('#sg'); b.textContent = 'Сохранено'; setTimeout(() => { b.textContent = 'Сохранить цели'; }, 1200);
+  };
   document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
   $('#exp').onclick = () => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S)], { type: 'application/json' }));
@@ -347,7 +485,7 @@ function viewMore() {
   };
   $('#imp').onclick = () => $('#impf').click();
   $('#impf').onchange = async e => {
-    try { const d = JSON.parse(await e.target.files[0].text()); if (!confirm('Заменить текущие данные импортированными?')) return; S = Object.assign({}, DEFAULTS, d); save(); render(); }
+    try { const d = JSON.parse(await e.target.files[0].text()); if (!confirm('Заменить текущие данные импортированными?')) return; S = Object.assign(fresh(), d); save(); render(); }
     catch { alert('Неверный файл'); }
   };
 }
@@ -356,7 +494,7 @@ function viewMore() {
 // ---------- cloud sync (Supabase, optional) ----------
 const CFG = window.GYMBRO_CONFIG || {};
 const SYNC_KEY = 'gymbro.sync';
-let sb = null, user = null, syncState = '', pushTimer = null, authReady = false;
+let sb = null, user = null, syncState = '', pushTimer = null, authReady = false, isAdmin = false;
 const getSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch { return {}; } };
 const setSync = o => localStorage.setItem(SYNC_KEY, JSON.stringify(o));
 const isEmptyState = () => !S.foods.length && !S.meals.length && !S.workouts.length && !S.body.length;
@@ -383,7 +521,7 @@ async function pull() {
   const remoteNewer = (remote.updatedAt || 0) > (same ? sy.at || 0 : 0);
   if (!remoteNewer) return localDirty ? push() : setStatus('Синхронизировано');
   if (localDirty && !confirm('На устройстве и в облаке разные данные.\nОК — взять данные из облака (локальные заменятся).\nОтмена — загрузить данные этого устройства в облако.')) return push();
-  S = Object.assign({}, structuredClone(DEFAULTS), remote);
+  S = Object.assign(fresh(), remote);
   localStorage.setItem(KEY, JSON.stringify(S)); setSync({ uid: user.id, at: S.updatedAt });
   setStatus('Загружено из облака'); render();
 }
@@ -393,7 +531,7 @@ async function cloudInit() {
     sb = window.supabase.createClient(CFG.url, CFG.anonKey);
     try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
     sb.auth.onAuthStateChange((_e, sess) => { user = sess ? sess.user : null; });
-    if (user) { await pull(); loadSharedEx(); }
+    if (user) { await pull(); loadSharedEx(); checkAdmin(); }
   } finally { authReady = true; render(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
@@ -401,12 +539,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && us
 function accountCard() {
   if (!CFG.url || !user) return '';
   return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
-    <div class="btns"><button class="btn ghost" id="syncnow">Синхронизировать</button><button class="btn ghost" id="logout">Выйти</button></div></div>`;
+    <div class="btns"><button class="btn ghost" id="syncnow">${ic('refresh')}Синхронизировать</button><button class="btn ghost" id="logout">${ic('logout')}Выйти</button></div></div>` + (isAdmin ? `<div class="card"><h2><span class="hic">${ic('crown')}Администратор</span></h2><div class="btns"><button class="btn ghost" id="admBase">${ic('db')}Общая база</button><button class="btn ghost" id="admCode">${ic('key')}Код доступа</button></div></div>` : '');
 }
 function viewAuth() {
   $('#top').innerHTML = '<h1>GymBro</h1>';
   $('#view').innerHTML = `<div class="card"><h2>Вход</h2><div class="dim" style="margin-bottom:6px">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
     <label>Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none"><label>Пароль (от 6 символов)</label><input id="pw" type="password" autocomplete="current-password">
+    <label>Код доступа (только для регистрации)</label><input id="ic" autocapitalize="none" autocomplete="off">
     <div id="autherr" class="sub" style="color:var(--bad);margin-top:6px"></div>
     <div class="btns" style="margin-top:8px"><button class="btn" id="login">Войти</button><button class="btn ghost" id="signup">Регистрация</button></div></div>`;
   bindAccount();
@@ -414,20 +553,23 @@ function viewAuth() {
 function bindAccount() {
   const err = t => { const e = $('#autherr'); if (e) e.textContent = t; };
   const auth = async mode => {
-    const email = $('#em').value.trim(), password = $('#pw').value;
+    const email = $('#em').value.trim(), password = $('#pw').value, code = $('#ic') ? $('#ic').value.trim() : '';
     if (!email || password.length < 6) return err('Введите email и пароль от 6 символов');
+    if (mode === 'up' && !code) return err('Для регистрации нужен код доступа');
     err('…');
-    const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
-    if (error) return err(error.message);
+    const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } }) : await sb.auth.signInWithPassword({ email, password });
+    if (error) return err(mode === 'up' && /database error|unexpected/i.test(error.message) ? 'Неверный код доступа' : error.message);
     if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
-    user = data.session.user; await pull(); loadSharedEx(); render();
+    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); render();
   };
   if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
+  if ($('#admBase')) $('#admBase').onclick = adminBase;
+  if ($('#admCode')) $('#admCode').onclick = adminCode;
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
-    await push(); await sb.auth.signOut(); user = null;
-    S = structuredClone(DEFAULTS); localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
+    await push(); await sb.auth.signOut(); user = null; isAdmin = false;
+    S = fresh(); localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
 
@@ -470,24 +612,82 @@ function searchShared(q) {
   }, 300);
 }
 
+
+// ---------- admin ----------
+async function checkAdmin() {
+  if (!sb || !user) return;
+  const { data } = await sb.rpc('is_admin');
+  isAdmin = data === true;
+  if (isAdmin && tab === 'more') render();
+}
+async function adminCode() {
+  const { data } = await sb.from('app_config').select('value').eq('key', 'invite_code').maybeSingle();
+  sheet(`<h2 style="margin-top:0">Код доступа</h2><div class="dim">Нужен новым пользователям при регистрации. Текущий код:</div>
+    <input id="nc" value="${esc(data ? data.value : '')}" autocapitalize="none" autocomplete="off" style="margin:8px 0">
+    <div class="btns"><button class="btn" id="ok">Сохранить</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    $('#cancel').onclick = closeSheet;
+    $('#ok').onclick = async () => {
+      const v = $('#nc').value.trim(); if (v.length < 4) return alert('Минимум 4 символа');
+      const { error } = await sb.from('app_config').upsert({ key: 'invite_code', value: v });
+      if (error) return alert(error.message);
+      closeSheet();
+    };
+  });
+}
+async function adminBase() {
+  sheet('<div class="empty">Загрузка…</div>');
+  const [fx, ex] = await Promise.all([
+    sb.from('shared_foods').select('id,name,kcal,p,f,c').order('name').limit(500),
+    sb.from('shared_exercises').select('id,name').order('name').limit(500)]);
+  const foods = fx.data || [], exs = ex.data || [];
+  const draw = q => {
+    q = q.trim().toLowerCase();
+    const fl = foods.filter(f => f.name.toLowerCase().includes(q)), el = exs.filter(e => e.name.toLowerCase().includes(q));
+    $('#alist').innerHTML = `<div class="dim" style="margin:6px 0 2px">Продукты (${fl.length})</div>` +
+      (fl.map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-df="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>') +
+      `<div class="dim" style="margin:10px 0 2px">Упражнения (${el.length})</div>` +
+      (el.map(e => `<div class="row"><div class="main">${esc(e.name)}</div><button class="btn del" data-de="${e.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>');
+    const del = (table, list, id) => async () => {
+      if (!confirm('Удалить из общей базы?')) return;
+      const { error } = await sb.from(table).delete().eq('id', id);
+      if (error) return alert(error.message);
+      list.splice(list.findIndex(x => x.id === id), 1); if (table === 'shared_exercises') loadSharedEx(); draw($('#aq').value);
+    };
+    document.querySelectorAll('[data-df]').forEach(b => b.onclick = del('shared_foods', foods, b.dataset.df));
+    document.querySelectorAll('[data-de]').forEach(b => b.onclick = del('shared_exercises', exs, b.dataset.de));
+  };
+  sheet(`<h2 style="margin-top:0">Общая база</h2><input id="aq" placeholder="Поиск…" autocomplete="off"><div id="alist"></div><div class="btns" style="margin-top:10px"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    $('#cancel').onclick = closeSheet; $('#aq').oninput = e => draw(e.target.value); draw('');
+  });
+}
+
 // ---------- shell ----------
-const TITLES = { food: 'Питание', train: 'Тренировки', body: 'Тело', stats: 'Прогресс', more: 'Настройки' };
+const TITLES = { food: 'Питание', train: 'Тренировки', vit: 'Витамины', body: 'Тело', stats: 'Прогресс', more: 'Настройки' };
 function render() {
   const loading = !!(CFG.url && !authReady), gate = !!(CFG.url && sb && !user);
   document.body.classList.toggle('gate', loading || gate);
   if (loading) { $('#top').innerHTML = '<h1>GymBro</h1>'; $('#view').innerHTML = '<div class="empty">Загрузка…</div>'; return; }
   if (gate) return viewAuth();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  const withDay = ['food', 'train', 'body'].includes(tab);
-  $('#top').innerHTML = `<h1>${TITLES[tab]}</h1>` + (withDay ? `<div class="nav"><button class="btn sm ghost" id="pd">‹</button><button class="btn sm ghost" id="td">${fmtDay(day)}</button><button class="btn sm ghost" id="nd">›</button></div>` : '');
+  const withDay = ['food', 'train', 'vit', 'body'].includes(tab);
+  $('#top').innerHTML = `<h1>${TITLES[tab]}</h1>` + (withDay ? `<div class="nav"><button class="btn sm ghost icon" id="pd" aria-label="Назад">${ic('left')}</button><button class="btn sm ghost" id="td">${fmtDay(day)}</button><button class="btn sm ghost icon" id="nd" aria-label="Вперёд">${ic('right')}</button></div>` : '');
   if (withDay) {
-    $('#pd').onclick = () => { day = shiftDay(day, -1); render(); };
-    $('#nd').onclick = () => { day = shiftDay(day, 1); render(); };
-    $('#td').onclick = () => { day = today(); render(); };
+    $('#pd').onclick = () => { day = shiftDay(day, -1); animate = true; render(); };
+    $('#nd').onclick = () => { day = shiftDay(day, 1); animate = true; render(); };
+    $('#td').onclick = () => { day = today(); animate = true; render(); };
   }
-  ({ food: viewFood, train: viewTrain, body: viewBody, stats: viewStats, more: viewMore })[tab]();
+  $('#view').classList.toggle('anim', animate); animate = false;
+  ({ food: viewFood, train: viewTrain, vit: viewVit, body: viewBody, stats: viewStats, more: viewMore })[tab]();
 }
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; window.scrollTo(0, 0); render(); });
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; animate = true; window.scrollTo(0, 0); render(); });
+// new day: checkmarks reset automatically because history is keyed by date
+function checkRollover() {
+  const t = today(); if (t === lastToday) return;
+  if (day === lastToday) day = t;
+  lastToday = t; animate = true; render();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkRollover(); });
+setInterval(checkRollover, 30000);
 render();
 cloudInit();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
