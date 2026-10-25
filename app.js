@@ -100,9 +100,9 @@ function pickFood() {
     $('#flist').innerHTML = list.length ? list.map(f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn sm ghost">Выбрать</button></div>`).join('') : '<div class="empty">Нет продуктов. Создайте новый или отсканируйте.</div>';
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = () => addMealSheet(S.foods.find(f => f.id === r.dataset.id)));
   };
-  sheet(`<h2 style="margin-top:0">Продукт</h2><input id="q" placeholder="Поиск..." autocomplete="off"><div id="flist" style="margin:8px 0"></div>
-    <div class="btns"><button class="btn" id="newf">+ Новый продукт</button><button class="btn ghost" id="quick">Быстро: только ккал</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
-    draw(''); $('#q').oninput = e => draw(e.target.value);
+  sheet(`<h2 style="margin-top:0">Продукт</h2><input id="q" placeholder="Поиск..." autocomplete="off"><div id="flist" style="margin:8px 0"></div><div id="slist"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn" id="newf">+ Новый продукт</button><button class="btn ghost" id="quick">Быстро: только ккал</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    draw(''); $('#q').oninput = e => { draw(e.target.value); searchShared(e.target.value); };
     $('#newf').onclick = () => foodForm({});
     $('#quick').onclick = () => foodForm({ name: 'Быстрая запись', quick: true });
     $('#cancel').onclick = closeSheet;
@@ -115,12 +115,15 @@ function foodForm(pre) {
     <label>Название</label><input id="fn" value="${esc(pre.name || '')}">
     <div class="grid2"><div><label>Ккал</label><input id="fk" inputmode="decimal" value="${v('kcal')}"></div><div><label>Белки, г</label><input id="fp" inputmode="decimal" value="${v('p')}"></div>
     <div><label>Жиры, г</label><input id="ff" inputmode="decimal" value="${v('f')}"></div><div><label>Углеводы, г</label><input id="fc" inputmode="decimal" value="${v('c')}"></div></div>
+    ${sb && user && !pre.quick ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" ${pre.barcode ? 'checked' : ''}> Добавить в общую базу</label>` : ''}
     <div class="btns" style="margin-top:12px"><button class="btn" id="ok">Сохранить и выбрать</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
     $('#cancel').onclick = closeSheet;
     $('#ok').onclick = () => {
       const name = $('#fn').value.trim(); if (!name) return;
       const food = { id: uid(), name, kcal: num($('#fk').value), p: num($('#fp').value), f: num($('#ff').value), c: num($('#fc').value), barcode: pre.barcode || '' };
-      S.foods.push(food); save(); addMealSheet(food);
+      S.foods.push(food); save();
+      if ($('#fshare') && $('#fshare').checked) shareFood(food);
+      addMealSheet(food);
     };
   });
 }
@@ -158,7 +161,11 @@ function scanBarcode() {
 async function lookupBarcode(code) {
   const known = S.foods.find(f => f.barcode === code);
   if (known) return addMealSheet(known);
-  sheet(`<div class="empty">Ищу ${esc(code)} в Open Food Facts…</div>`);
+  sheet(`<div class="empty">Ищу ${esc(code)}…</div>`);
+  if (sb && user) {
+    const { data } = await sb.from('shared_foods').select('*').eq('barcode', code).maybeSingle();
+    if (data) return addMealSheet(adoptShared(data));
+  }
   try {
     const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments`);
     const j = await r.json();
@@ -260,12 +267,13 @@ function viewTrain() {
   document.querySelectorAll('[data-delset]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.delset.split('.').map(Number); w.exercises[i].sets.splice(j, 1); save(); render(); });
   document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { w.exercises.splice(+b.dataset.delex, 1); save(); render(); } });
 }
+const allExNames = () => [...new Set([...exNames(), ...sharedEx])].sort((a, b) => a.localeCompare(b));
 const exNames = () => [...new Set(S.workouts.flatMap(w => w.exercises.map(e => e.name)))].sort();
 function addExercise() {
-  sheet(`<h2 style="margin-top:0">Упражнение</h2><input id="n" list="exl" placeholder="Например: Жим лёжа" autocomplete="off"><datalist id="exl">${exNames().map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+  sheet(`<h2 style="margin-top:0">Упражнение</h2><input id="n" list="exl" placeholder="Например: Жим лёжа" autocomplete="off"><datalist id="exl">${allExNames().map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <div class="chips" style="margin-top:10px">${['Жим лёжа', 'Присед', 'Становая тяга', 'Жим стоя', 'Подтягивания', 'Тяга штанги в наклоне'].map(n => `<button class="chip" data-n="${n}">${n}</button>`).join('')}</div>
     <div class="btns" style="margin-top:12px"><button class="btn" id="ok">Добавить</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
-    const add = name => { name = name.trim(); if (!name) return; getWorkout(true).exercises.push({ name, sets: [] }); save(); closeSheet(); render(); };
+    const add = name => { name = name.trim(); if (!name) return; getWorkout(true).exercises.push({ name, sets: [] }); save(); shareExercise(name); closeSheet(); render(); };
     $('#ok').onclick = () => add($('#n').value); $('#cancel').onclick = closeSheet;
     document.querySelectorAll('.chip[data-n]').forEach(c => c.onclick = () => add(c.dataset.n));
   });
@@ -348,7 +356,7 @@ function viewMore() {
 // ---------- cloud sync (Supabase, optional) ----------
 const CFG = window.GYMBRO_CONFIG || {};
 const SYNC_KEY = 'gymbro.sync';
-let sb = null, user = null, syncState = '', pushTimer = null;
+let sb = null, user = null, syncState = '', pushTimer = null, authReady = false;
 const getSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch { return {}; } };
 const setSync = o => localStorage.setItem(SYNC_KEY, JSON.stringify(o));
 const isEmptyState = () => !S.foods.length && !S.meals.length && !S.workouts.length && !S.body.length;
@@ -380,23 +388,28 @@ async function pull() {
   setStatus('Загружено из облака'); render();
 }
 async function cloudInit() {
-  if (!CFG.url || !CFG.anonKey || !window.supabase) return;
-  sb = window.supabase.createClient(CFG.url, CFG.anonKey);
-  try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
-  sb.auth.onAuthStateChange((_e, s) => { user = s ? s.user : null; });
-  if (user) await pull();
-  render();
+  try {
+    if (!CFG.url || !CFG.anonKey || !window.supabase) return;
+    sb = window.supabase.createClient(CFG.url, CFG.anonKey);
+    try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
+    sb.auth.onAuthStateChange((_e, sess) => { user = sess ? sess.user : null; });
+    if (user) { await pull(); loadSharedEx(); }
+  } finally { authReady = true; render(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
 
 function accountCard() {
-  if (!CFG.url) return '';
-  if (user) return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
+  if (!CFG.url || !user) return '';
+  return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
     <div class="btns"><button class="btn ghost" id="syncnow">Синхронизировать</button><button class="btn ghost" id="logout">Выйти</button></div></div>`;
-  return `<div class="card"><h2>Аккаунт</h2><div class="dim" style="margin-bottom:6px">Войдите, чтобы данные хранились в облаке и были на всех ваших устройствах.</div>
+}
+function viewAuth() {
+  $('#top').innerHTML = '<h1>GymBro</h1>';
+  $('#view').innerHTML = `<div class="card"><h2>Вход</h2><div class="dim" style="margin-bottom:6px">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
     <label>Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none"><label>Пароль (от 6 символов)</label><input id="pw" type="password" autocomplete="current-password">
     <div id="autherr" class="sub" style="color:var(--bad);margin-top:6px"></div>
     <div class="btns" style="margin-top:8px"><button class="btn" id="login">Войти</button><button class="btn ghost" id="signup">Регистрация</button></div></div>`;
+  bindAccount();
 }
 function bindAccount() {
   const err = t => { const e = $('#autherr'); if (e) e.textContent = t; };
@@ -407,7 +420,7 @@ function bindAccount() {
     const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
     if (error) return err(error.message);
     if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
-    user = data.session.user; await pull(); render();
+    user = data.session.user; await pull(); loadSharedEx(); render();
   };
   if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
@@ -418,9 +431,52 @@ function bindAccount() {
   };
 }
 
+
+// ---------- shared database (foods & exercises) ----------
+let sharedEx = [];
+try { sharedEx = JSON.parse(localStorage.getItem('gymbro.sharedEx') || '[]'); } catch {}
+async function loadSharedEx() {
+  if (!sb || !user) return;
+  const { data } = await sb.from('shared_exercises').select('name').order('name').limit(1000);
+  if (data) { sharedEx = data.map(r => r.name); localStorage.setItem('gymbro.sharedEx', JSON.stringify(sharedEx)); }
+}
+async function shareExercise(name) {
+  if (!sb || !user) return;
+  const key = name.trim().toLowerCase();
+  if (sharedEx.some(n => n.toLowerCase() === key)) return;
+  sharedEx.push(name);
+  await sb.from('shared_exercises').upsert({ name_key: key, name: name.trim() }, { onConflict: 'name_key', ignoreDuplicates: true });
+}
+async function shareFood(f) {
+  if (!sb || !user) return;
+  await sb.from('shared_foods').upsert({ name_key: f.name.trim().toLowerCase(), name: f.name.trim(), kcal: f.kcal, p: f.p, f: f.f, c: f.c, barcode: f.barcode || null }, { onConflict: 'name_key', ignoreDuplicates: true });
+}
+function adoptShared(r) {
+  let f = S.foods.find(x => (r.barcode && x.barcode === r.barcode) || x.name.toLowerCase() === r.name.toLowerCase());
+  if (!f) { f = { id: uid(), name: r.name, kcal: +r.kcal, p: +r.p, f: +r.f, c: +r.c, barcode: r.barcode || '' }; S.foods.push(f); save(); }
+  return f;
+}
+let shT = null;
+function searchShared(q) {
+  clearTimeout(shT);
+  const box = $('#slist'); if (!box) return;
+  q = q.trim().replace(/[%_,()]/g, ' ');
+  if (!sb || !user || q.length < 2) { box.innerHTML = ''; return; }
+  shT = setTimeout(async () => {
+    const { data } = await sb.from('shared_foods').select('*').ilike('name', '%' + q + '%').limit(15);
+    const b = $('#slist'); if (!b) return;
+    b.innerHTML = data && data.length ? '<div class="dim" style="margin:8px 0 2px">Общая база</div>' + data.map(f => `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn sm ghost">Выбрать</button></div>`).join('') : '';
+    b.querySelectorAll('[data-sid]').forEach(r => r.onclick = () => addMealSheet(adoptShared(data.find(x => x.id === r.dataset.sid))));
+  }, 300);
+}
+
 // ---------- shell ----------
 const TITLES = { food: 'Питание', train: 'Тренировки', body: 'Тело', stats: 'Прогресс', more: 'Настройки' };
 function render() {
+  const loading = !!(CFG.url && !authReady), gate = !!(CFG.url && sb && !user);
+  document.body.classList.toggle('gate', loading || gate);
+  if (loading) { $('#top').innerHTML = '<h1>GymBro</h1>'; $('#view').innerHTML = '<div class="empty">Загрузка…</div>'; return; }
+  if (gate) return viewAuth();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   const withDay = ['food', 'train', 'body'].includes(tab);
   $('#top').innerHTML = `<h1>${TITLES[tab]}</h1>` + (withDay ? `<div class="nav"><button class="btn sm ghost" id="pd">‹</button><button class="btn sm ghost" id="td">${fmtDay(day)}</button><button class="btn sm ghost" id="nd">›</button></div>` : '');
