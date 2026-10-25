@@ -74,6 +74,27 @@ function sheet(html, mount) {
 function closeSheet() { $('#sheet').hidden = true; $('#sheet .panel').innerHTML = ''; stopScanner(); }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
 
+// ---------- feedback: toast, button check, new-item highlight ----------
+let toastT = null, lastAdded = null;
+function toast(msg) {
+  const t = $('#toast'); if (!t) return;
+  clearTimeout(toastT); t.classList.remove('show'); void t.offsetWidth;
+  t.innerHTML = `<span class="tk"><svg viewBox="0 0 24 24"><path d="M6.5 12.5l3.6 3.6L17.5 8.5"/></svg></span><span>${esc(msg)}</span>`;
+  t.classList.add('show'); toastT = setTimeout(() => t.classList.remove('show'), 1700);
+}
+// turns the button into a check mark, then runs `then` (and shows a toast)
+function okBtn(btn, then, msg, restore) {
+  if (!btn || btn.dataset.busy) return then && then();
+  btn.dataset.busy = '1'; const orig = btn.innerHTML; btn.style.minWidth = btn.offsetWidth + 'px';
+  btn.classList.add('success'); btn.innerHTML = ic('check');
+  setTimeout(() => {
+    if (restore) { btn.classList.remove('success'); btn.innerHTML = orig; btn.style.minWidth = ''; delete btn.dataset.busy; }
+    then && then(); if (msg) toast(msg);
+  }, 420);
+}
+const isNew = id => lastAdded === id ? 'new' : '';
+function renderNew(id) { lastAdded = id; render(); lastAdded = null; }
+
 // ---------- chart ----------
 function chart(canvas, series, opts = {}) {
   const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
@@ -191,7 +212,7 @@ function viewFood() {
       <button class="btn ghost" id="ocr">${ic('file')}Этикетка</button>
     </div>
     <div class="card"><h2>Приёмы пищи</h2>
-      ${meals.length ? meals.map(m => `<div class="row"><div class="main">${esc(m.name)}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Пока пусто</div>'}
+      ${meals.length ? meals.map(m => `<div class="row ${isNew(m.id)}"><div class="main">${esc(m.name)}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Пока пусто</div>'}
     </div>`;
   $('#dt').onclick = () => {
     const want = !dt.train;
@@ -250,7 +271,7 @@ function foodForm(pre) {
       const food = { id: uid(), name, kcal: num($('#fk').value) || Math.round(4 * p + 4 * c + 9 * f), p, f, c, barcode: $('#fbc') ? $('#fbc').value.trim() : (pre.barcode || '') };
       S.foods.push(food); save();
       if ($('#fshare') && $('#fshare').checked) shareFood(food);
-      addMealSheet(food);
+      okBtn($('#ok'), () => addMealSheet(food), 'Продукт сохранён');
     };
   });
 }
@@ -263,8 +284,9 @@ function addMealSheet(food) {
     upd(); $('#g').oninput = upd; $('#cancel').onclick = closeSheet;
     $('#ok').onclick = () => {
       const g = num($('#g').value); if (g <= 0) return;
-      S.meals.push({ id: uid(), date: day, name: food.name, g, ...per(food, g) });
-      food.used = (food.used || 0) + 1; food.lastG = g; save(); closeSheet(); render();
+      const mid = uid(); S.meals.push({ id: mid, date: day, name: food.name, g, ...per(food, g) });
+      food.used = (food.used || 0) + 1; food.lastG = g; save();
+      okBtn($('#ok'), () => { closeSheet(); renderNew(mid); }, 'Добавлено: ' + food.name);
     };
   });
 }
@@ -482,10 +504,10 @@ function viewTrain() {
       const hist = exHistory(e.name, day)[0], prev = bestE1(e.name, day);
       const best = Math.max(0, ...e.sets.map(s => e1rm(s.w, s.r)));
       const nxt = (e.plan && e.plan[e.sets.length]) || e.sets[e.sets.length - 1] || (hist && hist.ex.sets[0]) || { w: '', r: '' };
-      return `<div class="card"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">${ic('x')}</button></h2>
+      return `<div class="card ${isNew('ex' + i)}"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">${ic('x')}</button></h2>
         ${e.plan && e.plan.length ? `<div class="plan"><span class="dim">План:</span>${e.plan.map((x, j) => `<span class="pl ${j < e.sets.length ? 'ok' : ''}">${x.w}×${x.r}</span>`).join('')}</div>` : ''}
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
-        ${e.sets.map((s, j) => `<div class="row"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
+        ${e.sets.map((s, j) => `<div class="row ${isNew(i + '.' + j)}"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
         <div class="grid4" style="grid-template-columns:1fr 1fr auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${nxt.w}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${nxt.r}"><button class="btn" data-addset="${i}">+</button></div>
         <div class="sub dim" style="margin-top:6px">Объём: ${Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0))} кг</div></div>`;
     }).join('') || '<div class="empty">В этот день тренировок нет</div>'}
@@ -496,7 +518,8 @@ function viewTrain() {
   document.querySelectorAll('[data-usetpl]').forEach(b => b.onclick = () => applyTemplate(b.dataset.usetpl));
   document.querySelectorAll('[data-addset]').forEach(b => b.onclick = () => {
     const i = +b.dataset.addset, wv = num($(`[data-w="${i}"]`).value), rv = Math.round(num($(`[data-r="${i}"]`).value));
-    if (rv <= 0) return; w.exercises[i].sets.push({ w: wv, r: rv }); save(); render();
+    if (rv <= 0) return; w.exercises[i].sets.push({ w: wv, r: rv }); save();
+    const key = i + '.' + (w.exercises[i].sets.length - 1); okBtn(b, () => renderNew(key));
   });
   document.querySelectorAll('[data-delset]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.delset.split('.').map(Number); w.exercises[i].sets.splice(j, 1); save(); render(); });
   document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { w.exercises.splice(+b.dataset.delex, 1); save(); render(); } });
@@ -518,7 +541,7 @@ function addExercise(cb) {
   const add = name => {
     name = name.trim(); if (!name) return; shareExercise(name);
     if (typeof cb === 'function') return cb(name);
-    getWorkout(true).exercises.push({ name, sets: [] }); save(); closeSheet(); render();
+    const wk = getWorkout(true); wk.exercises.push({ name, sets: [] }); save(); closeSheet(); renderNew('ex' + (wk.exercises.length - 1)); toast('Упражнение добавлено');
   };
   sheet(`<h2 class="sh">Упражнение</h2><input id="n" placeholder="Поиск или новое название" autocomplete="off" autocapitalize="sentences"><div id="exl" style="margin:8px 0"></div>
     <div class="btns"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
@@ -548,7 +571,7 @@ function applyTemplate(id) {
   const t = S.templates.find(x => x.id === id); if (!t) return;
   const w = getWorkout(true);
   t.exercises.forEach(e => w.exercises.push({ name: e.name, sets: [], plan: e.plan.map(x => ({ ...x })) }));
-  save(); closeSheet(); render();
+  save(); closeSheet(); render(); toast('Шаблон применён');
 }
 function tplList() {
   sheet(`<h2 class="sh">Шаблоны тренировок</h2>
@@ -575,7 +598,7 @@ function tplEditor(draft) {
       if (!name) return $('#tn').focus();
       if (!draft.exercises.length) return alert('Добавьте хотя бы одно упражнение');
       if (draft.id) Object.assign(S.templates.find(x => x.id === draft.id), { name, exercises: draft.exercises }); else S.templates.push({ id: uid(), name, exercises: draft.exercises });
-      save(); tplList(); render();
+      save(); okBtn($('#tsave'), () => { tplList(); render(); }, 'Шаблон сохранён');
     };
     if (draft.id) $('#tdel').onclick = () => { if (!confirm('Удалить шаблон?')) return; S.templates = S.templates.filter(x => x.id !== draft.id); save(); tplList(); render(); };
   });
@@ -590,7 +613,7 @@ function saveAsTemplate() {
       const exercises = w.exercises.map(e => ({ name: e.name, plan: (e.sets.length ? e.sets : e.plan || []).map(x => ({ w: x.w, r: x.r })) }));
       const ex = S.templates.find(t => t.name.toLowerCase() === name.toLowerCase());
       if (ex) { if (!confirm('Шаблон с таким названием уже есть. Обновить его?')) return; ex.exercises = exercises; } else S.templates.push({ id: uid(), name, exercises });
-      save(); closeSheet(); render();
+      save(); okBtn($('#tsave'), () => { closeSheet(); render(); }, 'Шаблон сохранён');
     };
   });
 }
@@ -669,7 +692,7 @@ function vitForm(v) {
       const name = $('#vn').value.trim(), ds = pickedDays(p); if (!name) return; if (!ds.length) return alert('Выберите хотя бы один день');
       const data = { name, dose: $('#vd').value.trim(), when: $('#vw').value.trim(), days: ds };
       if (v) Object.assign(v, data); else S.vitamins.push({ id: uid(), created: today(), ...data });
-      save(); closeSheet(); render();
+      save(); okBtn($('#ok'), () => { closeSheet(); render(); }, 'Витамин сохранён');
     };
     if (v) $('#del').onclick = () => { if (!confirm('Удалить витамин и его историю?')) return; S.vitamins = S.vitamins.filter(x => x.id !== v.id); Object.keys(S.vitLog).forEach(k => { S.vitLog[k] = S.vitLog[k].filter(i => i !== v.id); if (!S.vitLog[k].length) delete S.vitLog[k]; }); save(); closeSheet(); render(); };
   });
@@ -690,7 +713,7 @@ function bodySheet() {
       document.querySelectorAll('[data-m]').forEach(i => { const v = num(i.value); if (v > 0) { rec[i.dataset.m] = v; any = true; } });
       if (!any) return;
       const ex = S.body.find(b => b.date === d); if (ex) Object.assign(ex, rec, { id: ex.id }); else S.body.push(rec);
-      save(); closeSheet(); render();
+      save(); okBtn($('#ok'), () => { closeSheet(); render(); }, 'Замер сохранён');
     };
   });
 }
@@ -759,13 +782,13 @@ function viewMore() {
       <div class="card"><h2><span class="hic">${ic('moon')}День отдыха</span></h2>${goalFields('r', S.goalsRest)}</div><button class="btn full" id="sg">Сохранить</button>`;
     $('#sg').onclick = () => {
       const rd = p => ({ kcal: num($(`#${p}k`).value), p: num($(`#${p}p`).value), f: num($(`#${p}f`).value), c: num($(`#${p}c`).value) });
-      S.goals = rd('g'); S.goalsRest = rd('r'); save(); flash($('#sg'), 'Сохранено');
+      S.goals = rd('g'); S.goalsRest = rd('r'); save(); okBtn($('#sg'), null, 'Цели сохранены', true);
     };
   } else if (moreSub === 'days') {
     $('#view').innerHTML = back + `<div class="card"><h2>Тренировочные дни недели</h2><div id="tdays">${wdChips(S.trainDays)}</div>
       <div class="dim small" style="margin-top:10px">День также считается тренировочным, если в нём записана тренировка. Тип дня можно переключить вручную на вкладке «Питание».</div></div><button class="btn full" id="sg">Сохранить</button>`;
     bindChips($('#tdays'));
-    $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); flash($('#sg'), 'Сохранено'); };
+    $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); okBtn($('#sg'), null, 'Дни сохранены', true); };
   } else if (moreSub === 'foods') {
     $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
@@ -923,7 +946,7 @@ async function adminCode() {
       const v = $('#nc').value.trim(); if (v.length < 4) return alert('Минимум 4 символа');
       const { error } = await sb.from('app_config').upsert({ key: 'invite_code', value: v });
       if (error) return alert(error.message);
-      closeSheet();
+      okBtn($('#ok'), closeSheet, 'Код доступа сохранён');
     };
   });
 }
