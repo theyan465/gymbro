@@ -1,5 +1,5 @@
-const CACHE = 'gymbro-v16';
-const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'vendor/html5-qrcode.min.js', 'vendor/supabase.js', 'config.js', 'icons/icon-180.png', 'icons/icon-32.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'gymbro-v17';
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'vendor/html5-qrcode.min.js', 'vendor/supabase.js', 'vendor/zbar.js', 'config.js', 'icons/icon-180.png', 'icons/icon-32.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
