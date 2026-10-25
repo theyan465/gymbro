@@ -312,10 +312,29 @@ function stopScanner() {
   try { Promise.resolve(s.stop()).then(() => s.clear()).catch(() => {}); } catch { /* scanner was not running */ }
 }
 const bcFormats = () => { const F = window.Html5QrcodeSupportedFormats; return F ? [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE] : undefined; };
+// ZBar (WebAssembly) reads 1D barcodes in any orientation, which the old JS decoder often missed
+async function ensureZbar() {
+  if (window.zbarWasm) return true;
+  try { await loadScript('vendor/zbar.js'); } catch { return false; }
+  return !!window.zbarWasm;
+}
+const BAR_TYPES = /EAN|UPC|CODE128|CODE39|I25|ISBN/;
+async function zbarFind(canvas) {
+  const res = await window.zbarWasm.scanImageData(canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height));
+  for (const r of res) { if (BAR_TYPES.test(r.typeName)) { const t = r.decode(); if (t) return t; } }
+  return null;
+}
 // decode a barcode from a still photo (works well on iPhone: native autofocus and full resolution)
 async function decodeBarcodeFile(file) {
   const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => null);
-  const holder = $('#rtmp'); if (!holder) return null;
+  if (bmp && await ensureZbar()) {
+    for (const max of [2200, 1400, 900, 3000]) {
+      const sc = Math.min(max / Math.max(bmp.width, bmp.height), max === 3000 ? 1.5 : 1), c = document.createElement('canvas');
+      c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      try { const r = await zbarFind(c); if (r) return r; } catch { /* try next size */ }
+    }
+  }
+  if (typeof Html5Qrcode === 'undefined' || !$('#rtmp')) return null;
   const h = new Html5Qrcode('rtmp', { formatsToSupport: bcFormats(), verbose: false });
   try {
     for (const max of [1600, 1000, 2400]) {
@@ -330,11 +349,37 @@ async function decodeBarcodeFile(file) {
   } finally { try { h.clear(); } catch { /* ignore */ } }
   return null;
 }
+// live camera scanner: our own <video> + ZBar on full frames
+async function startLive(box, onCode) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('камера не поддерживается');
+  if (!await ensureZbar()) throw new Error('не загрузился модуль распознавания');
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] }, audio: false });
+  const video = document.createElement('video'); video.setAttribute('playsinline', ''); video.muted = true; video.autoplay = true; video.srcObject = stream;
+  box.insertBefore(video, box.firstChild); await video.play().catch(() => {});
+  let stopped = false, timer = null, last = '';
+  const cv = document.createElement('canvas');
+  const loop = async () => {
+    if (stopped) return;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        const sc = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+        cv.width = Math.round(video.videoWidth * sc); cv.height = Math.round(video.videoHeight * sc);
+        cv.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, cv.width, cv.height);
+        const code = await zbarFind(cv);
+        if (code && !stopped && (/^\d{8,14}$/.test(code) || code === last)) { stopped = true; return onCode(code); }
+        last = code || '';
+      }
+    } catch { /* keep scanning */ }
+    if (!stopped) timer = setTimeout(loop, 110);
+  };
+  loop();
+  return { stop() { stopped = true; clearTimeout(timer); stream.getTracks().forEach(t => t.stop()); video.srcObject = null; video.remove(); }, clear() {} };
+}
 function scanBarcode(cb) {
   const onCode = typeof cb === 'function' ? cb : lookupBarcode;
   const handle = code => { stopScanner(); onCode(code); };
-  sheet(`<h2 class="sh">Сканер штрихкода</h2><div id="reader"></div><div id="rtmp" hidden></div>
-    <div id="msg" class="dim small" style="margin:8px 0">Наведите камеру на штрихкод, держите ровно на расстоянии 10–20 см.</div>
+  sheet(`<h2 class="sh">Сканер штрихкода</h2><div id="reader" class="scanwrap"><div class="scanframe"><i></i></div></div><div id="rtmp" hidden></div>
+    <div id="msg" class="dim small" style="margin:10px 0">Поместите штрихкод в рамку и держите телефон в 20–30 см от упаковки. Код читается в любом положении.</div>
     <div class="dim small" style="margin-top:10px">Не читается? Снимите штрихкод на фото:</div>${photoPicker('bp')}
     <button class="btn ghost full" id="manual" style="margin:0">Ввести номер вручную</button>`, () => {
     $('#manual').onclick = () => { const c = prompt('Штрихкод (цифры)'); if (c && c.trim()) handle(c.trim()); };
@@ -342,18 +387,12 @@ function scanBarcode(cb) {
       stopScanner(); $('#msg').textContent = 'Распознаю штрихкод…';
       const code = await decodeBarcodeFile(f).catch(() => null);
       if (code) return handle(code);
-      $('#msg').innerHTML = 'Не нашёл штрихкод на фото. Снимите ближе и ровно, чтобы он занимал большую часть кадра. <button class="btn ghost sm" id="again">Включить камеру снова</button>';
+      $('#msg').innerHTML = 'Не нашёл штрихкод на фото. Снимите ближе и ровно, чтобы он занимал не меньше трети кадра. <button class="btn ghost sm" id="again">Включить камеру снова</button>';
       $('#again').onclick = () => scanBarcode(onCode);
     });
-    if (typeof Html5Qrcode === 'undefined') { $('#msg').textContent = 'Живой сканер не загрузился — снимите фото штрихкода.'; return; }
-    scanner = new Html5Qrcode('reader', { formatsToSupport: bcFormats(), verbose: false, experimentalFeatures: { useBarCodeDetectorIfSupported: true } });
-    let done = false;
-    scanner.start({ facingMode: 'environment' }, {
-      fps: 12,
-      qrbox: (w, h) => ({ width: Math.floor(w * 0.9), height: Math.floor(Math.min(h * 0.6, w * 0.45)) }),
-      videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' }] },
-    }, code => { if (done) return; done = true; handle(code); }, () => {})
-      .catch(err => { $('#msg').textContent = 'Камера недоступна (' + (err && err.message || err) + '). Разрешите доступ к камере в настройках Safari или снимите фото штрихкода.'; });
+    const hint = setTimeout(() => { const m = $('#msg'); if (m && scanner) { m.innerHTML = 'Не читается? <b>Отодвиньте телефон на 20–30 см</b> (ближе камера не фокусируется) и держите ровно. Или нажмите «Камера» ниже: обычная камера iPhone фокусируется точнее.'; $('#sheet .pick2').classList.add('pulse'); } }, 7000);
+    startLive($('#reader'), handle).then(sc => { if ($('#reader')) scanner = sc; else sc.stop(); })
+      .catch(err => { clearTimeout(hint); $('#msg').textContent = 'Камера недоступна (' + (err && err.message || err) + '). Разрешите доступ к камере в настройках Safari или снимите штрихкод на фото.'; });
   });
 }
 async function lookupBarcode(code) {
