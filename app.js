@@ -23,6 +23,8 @@ const dkey = d => { const x = new Date(d); return x.getFullYear() + '-' + String
 const today = () => dkey(new Date());
 const shiftDay = (k, n) => { const d = new Date(k + 'T12:00:00'); d.setDate(d.getDate() + n); return dkey(d); };
 const fmtDay = k => k === today() ? 'Сегодня' : new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+const dayLabel = k => { const t = today(); return k === t ? 'Сегодня' : k === shiftDay(t, -1) ? 'Вчера' : k === shiftDay(t, 1) ? 'Завтра' : new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }); };
+const longDay = k => new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 const e1rm = (w, r) => r <= 0 ? 0 : r === 1 ? w : w * (1 + r / 30); // Epley
 
 
@@ -163,33 +165,70 @@ function ringCard(t, g) {
 const goTab = (t, d) => { tab = t; if (d) day = d; animate = true; window.scrollTo(0, 0); render(); };
 
 function viewHome() {
-  const t0 = today(), h = habits(t0), di = dayInfo(t0), t = sumMeals(t0), all = streak('all');
-  const wk = []; for (let i = 6; i >= 0; i--) wk.push(shiftDay(t0, -i));
+  const d = day, tdy = today(), h = habits(d), di = dayInfo(d), t = sumMeals(d), all = streak('all'), isToday = d === tdy, future = d > tdy;
+  const wk = []; for (let i = 6; i >= 0; i--) wk.push(shiftDay(tdy, -i));
   const app = Object.values(h).filter(v => v !== null), doneN = app.filter(Boolean).length;
-  const todayW = S.workouts.find(w => w.date === t0), exs = todayW ? todayW.exercises.filter(e => e.sets.length) : [];
+  const dayW = S.workouts.find(w => w.date === d), exs = dayW ? dayW.exercises.filter(e => e.sets.length) : [];
   const vol = exs.reduce((a, e) => a + e.sets.reduce((x, y) => x + y.w * y.r, 0), 0), setsN = exs.reduce((a, e) => a + e.sets.length, 0);
-  const due = S.vitamins.filter(v => vitDue(v, t0)), vdone = due.filter(v => vitTaken(v, t0)).length;
-  const wts = S.body.filter(b => b.weight).sort((a, b) => b.date.localeCompare(a.date)), w0 = wts[0], w1 = wts[1];
-  const hab = (icon, name, state, kind) => `<div class="hab ${state}">${ic(icon)}<span>${name}</span><em>${state === 'done' ? ic('check') : state === 'na' ? '—' : ic('circle')}</em><i>${ic('flame')}${streak(kind)}</i></div>`;
+  const due = S.vitamins.filter(v => vitDue(v, d)), vdone = due.filter(v => vitTaken(v, d)).length;
+  const wts = S.body.filter(b => b.weight && b.date <= d).sort((a, b) => b.date.localeCompare(a.date)), w0 = wts[0], w1 = wts[1];
+  const dayWeight = S.body.find(b => b.date === d && b.weight);
+  const when = isToday ? 'сегодня' : 'в этот день';
+  const hab = (icon, name, state, kind, target) => `<div class="hab ${state}" data-go="${target}">${ic(icon)}<span>${name}</span><em>${state === 'done' ? ic('check') : state === 'na' ? '—' : ic('circle')}</em><i>${ic('flame')}${streak(kind)}</i></div>`;
   const st = v => v === null ? 'na' : v ? 'done' : 'todo';
   $('#view').innerHTML = `
     <div class="card hero3">
       <div class="flamebig ${all ? '' : 'off'}">${ic('flame')}</div>
       <div class="main"><div class="big">${all}<small> ${all === 1 ? 'день' : all >= 2 && all <= 4 ? 'дня' : 'дней'} подряд</small></div>
-        <div class="dim">${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })} · выполнено ${doneN} из ${app.length}</div></div>
+        <div class="dim">${longDay(d)} · выполнено ${doneN} из ${app.length}</div></div>
     </div>
-    <div class="habs">${hab('utensils', 'Питание', st(h.nutr), 'nutr')}${hab('dumbbell', 'Тренировка', st(h.train), 'train')}${hab('pill', 'Витамины', st(h.vit), 'vit')}</div>
-    <div class="card week"><h2>Последние 7 дней</h2><div class="wk">${wk.map(k => `<div class="wd1 ${k === t0 ? 'tdy' : ''}"><small>${WD[wday(k)]}</small><div class="dayc" style="--p:${Math.round(dayFrac(k) * 100)}"><span>${+k.slice(8)}</span></div></div>`).join('')}</div></div>
-    <div class="link" data-go="food">${ringCard(t, goalFor(t0))}</div>
+    <div class="habs">${hab('utensils', 'Питание', st(h.nutr), 'nutr', 'food')}${hab('dumbbell', 'Тренировка', st(h.train), 'train', 'train')}${hab('pill', 'Витамины', st(h.vit), 'vit', 'vit')}</div>
+    <div class="card week"><h2>Последние 7 дней</h2><div class="wk">${wk.map(k => `<div class="wd1 ${k === tdy ? 'tdy' : ''} ${k === d ? 'sel' : ''}" data-dk="${k}"><small>${WD[wday(k)]}</small><div class="dayc" style="--p:${Math.round(dayFrac(k) * 100)}"><span>${+k.slice(8)}</span></div></div>`).join('')}</div></div>
+    <div class="link" data-go="food">${ringCard(t, goalFor(d))}</div>
     <div class="card"><h2><span>Тренировка</span><span class="tag ${di.train ? 'train' : 'rest'}">${ic(di.train ? 'bolt' : 'moon')}${di.train ? 'Тренировочный день' : 'День отдыха'}</span></h2>
       ${exs.length ? `<div class="sub" style="margin-bottom:10px">${exs.length} упр. · ${setsN} подходов · объём ${Math.round(vol)} кг</div><button class="btn ghost" data-go="train">Открыть тренировку</button>`
-        : di.train ? `<div class="sub" style="margin-bottom:10px">По плану сегодня тренировка</div><button class="btn" data-go="train">${ic('plus')}Начать</button>` : '<div class="sub">Сегодня отдых — восстанавливайтесь. Если потренируетесь, день станет тренировочным.</div>'}</div>
+        : di.train ? `<div class="sub" style="margin-bottom:10px">${future ? 'По плану в этот день тренировка' : isToday ? 'По плану сегодня тренировка' : 'В этот день тренировка не записана'}</div><button class="btn" data-go="train">${ic('plus')}${isToday || future ? 'Начать' : 'Записать'}</button>` : `<div class="sub">${isToday ? 'Сегодня отдых — восстанавливайтесь. Если потренируетесь, день станет тренировочным.' : 'День отдыха.'}</div>`}</div>
     <div class="card"><h2><span>Витамины</span><span class="tag">${vdone} / ${due.length}</span></h2>
-      ${due.map(v => `<div class="vit ${vitTaken(v, t0) ? 'on' : ''} ${lastVit === v.id ? 'pop' : ''}" data-hvit="${v.id}"><span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div></div>`).join('') || '<div class="sub">На сегодня ничего не запланировано</div>'}</div>
-    <div class="card"><h2>Вес</h2><div class="wrow"><div>${w0 ? `<div class="big">${w0.weight}<small> кг</small></div><div class="dim">${w1 ? (w0.weight - w1.weight > 0 ? '+' : '') + r1(w0.weight - w1.weight) + ' кг с ' + fmtDay(w1.date) : fmtDay(w0.date)}</div>` : '<div class="dim">Пока нет замеров</div>'}</div><button class="btn ghost" id="hw">${ic('plus')}Записать</button></div></div>`;
-  document.querySelectorAll('[data-go]').forEach(e => e.onclick = () => goTab(e.dataset.go, today()));
-  document.querySelectorAll('[data-hvit]').forEach(r => r.onclick = () => toggleVit(r.dataset.hvit, t0));
-  $('#hw').onclick = bodySheet;
+      ${due.map(v => `<div class="vit ${vitTaken(v, d) ? 'on' : ''} ${lastVit === v.id ? 'pop' : ''}" data-hvit="${v.id}"><span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.time, v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div></div>`).join('') || `<div class="sub">На ${isToday ? 'сегодня' : 'этот день'} ничего не запланировано</div>`}</div>
+    <div class="card"><h2>Вес</h2><div class="wrow"><div>${w0 ? `<div class="big">${w0.weight}<small> кг</small></div><div class="dim">${dayWeight ? (w1 ? (w0.weight - w1.weight > 0 ? '+' : '') + r1(w0.weight - w1.weight) + ' кг с ' + fmtDay(w1.date) : 'замер ' + when) : 'последний замер: ' + fmtDay(w0.date)}</div>` : '<div class="dim">Пока нет замеров</div>'}</div><button class="btn ghost" id="hw">${ic('plus')}Записать</button></div></div>`;
+  document.querySelectorAll('[data-go]').forEach(e => e.onclick = () => goTab(e.dataset.go, d));
+  document.querySelectorAll('[data-dk]').forEach(e => e.onclick = () => { day = e.dataset.dk; animate = true; render(); });
+  document.querySelectorAll('[data-hvit]').forEach(r => r.onclick = () => toggleVit(r.dataset.hvit, d));
+  $('#hw').onclick = () => bodySheet(d);
+}
+
+
+// ---------- calendar ----------
+const dayDots = k => ({
+  food: S.meals.some(m => m.date === k),
+  train: S.workouts.some(w => w.date === k && w.exercises.some(e => e.sets.length)),
+  vit: (S.vitLog[k] || []).length > 0,
+  body: S.body.some(b => b.date === k),
+});
+function calendarSheet(ym) {
+  const draw = ym => {
+    const [Y, M] = ym.split('-').map(Number), lead = (new Date(Y, M - 1, 1).getDay() + 6) % 7, n = new Date(Y, M, 0).getDate(), tdy = today();
+    const title = new Date(Y, M - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push('<i class="calblank"></i>');
+    for (let i = 1; i <= n; i++) {
+      const k = `${Y}-${String(M).padStart(2, '0')}-${String(i).padStart(2, '0')}`, dd = dayDots(k), has = dd.food || dd.train || dd.vit || dd.body;
+      const frac = has ? Math.round(dayFrac(k) * 100) : 0;
+      cells.push(`<button class="cal ${has ? 'has' : 'empty'} ${k === tdy ? 'tdy' : ''} ${k === day ? 'sel' : ''} ${k > tdy ? 'fut' : ''}" data-k="${k}"><span class="cn" style="--p:${frac}">${i}</span><span class="cd">${dd.food ? '<b class="d1"></b>' : ''}${dd.train ? '<b class="d2"></b>' : ''}${dd.vit ? '<b class="d3"></b>' : ''}${dd.body ? '<b class="d4"></b>' : ''}</span></button>`);
+    }
+    $('#calbody').innerHTML = `<div class="calhead"><button class="btn sm ghost icon" data-cm="-1" aria-label="Предыдущий месяц">${ic('left')}</button><b>${title[0].toUpperCase() + title.slice(1).replace(/\s*г\.$/, '')}</b><button class="btn sm ghost icon" data-cm="1" aria-label="Следующий месяц">${ic('right')}</button></div>
+      <div class="calgrid calwd">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(x => `<small>${x}</small>`).join('')}</div>
+      <div class="calgrid">${cells.join('')}</div>
+      <div class="legend" style="margin-top:14px"><span><b class="d1"></b>еда</span><span><b class="d2"></b>тренировка</span><span><b class="d3"></b>витамины</span><span><b class="d4"></b>замер</span></div>
+      <div class="dim small" style="margin-top:8px">Дни без записей показаны пустыми. Кольцо — доля выполненного за день.</div>`;
+    document.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => { const dt = new Date(Y, M - 1 + +b.dataset.cm, 1); draw(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`); });
+    document.querySelectorAll('.cal').forEach(b => b.onclick = () => { day = b.dataset.k; closeSheet(); animate = true; render(); });
+  };
+  sheet(`<h2 class="sh">Календарь</h2><div id="calbody"></div>
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" id="caltoday">К сегодняшнему дню</button></div>`, () => {
+    $('#caltoday').onclick = () => { day = today(); closeSheet(); animate = true; render(); };
+    draw(ym);
+  });
 }
 
 // ---------- nutrition ----------
@@ -760,8 +799,8 @@ const MEAS = [['weight', 'Вес, кг'], ['waist', 'Талия'], ['chest', 'Г
 let statView = 'charts';
 const seg = () => `<div class="seg"><button class="${statView === 'charts' ? 'on' : ''}" data-sv="charts">Графики</button><button class="${statView === 'body' ? 'on' : ''}" data-sv="body">Замеры</button></div>`;
 const bindSeg = () => document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { statView = b.dataset.sv; animate = true; render(); });
-function bodySheet() {
-  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = today();
+function bodySheet(date) {
+  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = typeof date === 'string' ? date : today();
   sheet(`<h2 class="sh">Замер · ${fmtDay(d)}</h2><div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}${k === 'weight' ? '' : ', см'}</label><input inputmode="decimal" data-m="${k}" placeholder="${last[k] || ''}"></div>`).join('')}</div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
     $('#cancel').onclick = closeSheet;
@@ -778,7 +817,7 @@ function viewBody() {
   const rows = [...S.body].sort((a, b) => b.date.localeCompare(a.date));
   $('#view').innerHTML = seg() + `<button class="btn full" id="addB">${ic('plus')}Замер</button>
     <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ')}</div></div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
-  bindSeg(); $('#addB').onclick = bodySheet;
+  bindSeg(); $('#addB').onclick = () => bodySheet();
   document.querySelectorAll('[data-delb]').forEach(b => b.onclick = () => { S.body = S.body.filter(x => x.id !== b.dataset.delb); save(); render(); });
 }
 
@@ -1123,17 +1162,20 @@ function render() {
   if (loading) { $('#top').innerHTML = '<h1>GymBro</h1>'; $('#view').innerHTML = '<div class="empty">Загрузка…</div>'; return; }
   if (gate) return viewAuth();
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-  const withDay = ['food', 'train', 'vit'].includes(tab);
-  $('#top').innerHTML = `<h1>${TITLES[tab]}</h1>` + (withDay ? `<div class="nav"><button class="btn sm ghost icon" id="pd" aria-label="Назад">${ic('left')}</button><button class="btn sm ghost" id="td">${fmtDay(day)}</button><button class="btn sm ghost icon" id="nd" aria-label="Вперёд">${ic('right')}</button></div>` : '');
+  const withDay = ['home', 'food', 'train', 'vit'].includes(tab), other = withDay && day !== today();
+  $('#top').classList.toggle('other', other);
+  $('#top').innerHTML = `<div class="tl"><h1>${TITLES[tab]}</h1>${other ? `<button class="back2today" id="bt">${ic('left')}К сегодня</button>` : ''}</div>` + (withDay ? `<div class="nav"><button class="btn sm ghost icon" id="pd" aria-label="Назад">${ic('left')}</button><button class="btn sm ghost ${other ? 'other' : ''}" id="td">${ic('calendar')}${dayLabel(day)}</button><button class="btn sm ghost icon" id="nd" aria-label="Вперёд">${ic('right')}</button></div>` : '');
   if (withDay) {
     $('#pd').onclick = () => { day = shiftDay(day, -1); animate = true; render(); };
     $('#nd').onclick = () => { day = shiftDay(day, 1); animate = true; render(); };
-    $('#td').onclick = () => { day = today(); animate = true; render(); };
+    $('#td').onclick = () => calendarSheet(day.slice(0, 7));
+    if ($('#bt')) $('#bt').onclick = () => { day = today(); animate = true; render(); };
   }
   $('#view').classList.toggle('anim', animate); animate = false;
   ({ home: viewHome, food: viewFood, train: viewTrain, vit: viewVit, body: viewBody, stats: viewStats, more: viewMore })[tab]();
+  if (other) $('#view').insertAdjacentHTML('afterbegin', `<div class="ribbon">${ic('calendar')}<span>Это не сегодня: <b>${longDay(day)}</b> · ${day > today() ? 'будущий день' : 'прошедший день'}</span></div>`);
 }
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === 'more') moreSub = null; animate = true; window.scrollTo(0, 0); render(); });
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === 'more') moreSub = null; if (tab === 'home') day = today(); animate = true; window.scrollTo(0, 0); render(); });
 const qTab = new URLSearchParams(location.search).get('tab'); if (qTab && TITLES[qTab]) tab = qTab;
 if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'goto' && TITLES[e.data.tab]) { tab = e.data.tab; day = today(); animate = true; render(); } });
 // new day: checkmarks reset automatically because history is keyed by date
