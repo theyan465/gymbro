@@ -356,7 +356,7 @@ function viewMore() {
 // ---------- cloud sync (Supabase, optional) ----------
 const CFG = window.GYMBRO_CONFIG || {};
 const SYNC_KEY = 'gymbro.sync';
-let sb = null, user = null, syncState = '', pushTimer = null, authReady = false;
+let sb = null, user = null, syncState = '', pushTimer = null, authReady = false, isAdmin = false;
 const getSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch { return {}; } };
 const setSync = o => localStorage.setItem(SYNC_KEY, JSON.stringify(o));
 const isEmptyState = () => !S.foods.length && !S.meals.length && !S.workouts.length && !S.body.length;
@@ -393,7 +393,7 @@ async function cloudInit() {
     sb = window.supabase.createClient(CFG.url, CFG.anonKey);
     try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
     sb.auth.onAuthStateChange((_e, sess) => { user = sess ? sess.user : null; });
-    if (user) { await pull(); loadSharedEx(); }
+    if (user) { await pull(); loadSharedEx(); checkAdmin(); }
   } finally { authReady = true; render(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
@@ -401,12 +401,13 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && us
 function accountCard() {
   if (!CFG.url || !user) return '';
   return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
-    <div class="btns"><button class="btn ghost" id="syncnow">Синхронизировать</button><button class="btn ghost" id="logout">Выйти</button></div></div>`;
+    <div class="btns"><button class="btn ghost" id="syncnow">Синхронизировать</button><button class="btn ghost" id="logout">Выйти</button></div></div>` + (isAdmin ? `<div class="card"><h2>Администратор</h2><div class="btns"><button class="btn ghost" id="admBase">Общая база</button><button class="btn ghost" id="admCode">Код доступа</button></div></div>` : '');
 }
 function viewAuth() {
   $('#top').innerHTML = '<h1>GymBro</h1>';
   $('#view').innerHTML = `<div class="card"><h2>Вход</h2><div class="dim" style="margin-bottom:6px">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
     <label>Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none"><label>Пароль (от 6 символов)</label><input id="pw" type="password" autocomplete="current-password">
+    <label>Код доступа (только для регистрации)</label><input id="ic" autocapitalize="none" autocomplete="off">
     <div id="autherr" class="sub" style="color:var(--bad);margin-top:6px"></div>
     <div class="btns" style="margin-top:8px"><button class="btn" id="login">Войти</button><button class="btn ghost" id="signup">Регистрация</button></div></div>`;
   bindAccount();
@@ -414,19 +415,22 @@ function viewAuth() {
 function bindAccount() {
   const err = t => { const e = $('#autherr'); if (e) e.textContent = t; };
   const auth = async mode => {
-    const email = $('#em').value.trim(), password = $('#pw').value;
+    const email = $('#em').value.trim(), password = $('#pw').value, code = $('#ic') ? $('#ic').value.trim() : '';
     if (!email || password.length < 6) return err('Введите email и пароль от 6 символов');
+    if (mode === 'up' && !code) return err('Для регистрации нужен код доступа');
     err('…');
-    const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
-    if (error) return err(error.message);
+    const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } }) : await sb.auth.signInWithPassword({ email, password });
+    if (error) return err(mode === 'up' && /database error|unexpected/i.test(error.message) ? 'Неверный код доступа' : error.message);
     if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
-    user = data.session.user; await pull(); loadSharedEx(); render();
+    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); render();
   };
   if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
+  if ($('#admBase')) $('#admBase').onclick = adminBase;
+  if ($('#admCode')) $('#admCode').onclick = adminCode;
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
-    await push(); await sb.auth.signOut(); user = null;
+    await push(); await sb.auth.signOut(); user = null; isAdmin = false;
     S = structuredClone(DEFAULTS); localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
@@ -468,6 +472,55 @@ function searchShared(q) {
     b.innerHTML = data && data.length ? '<div class="dim" style="margin:8px 0 2px">Общая база</div>' + data.map(f => `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn sm ghost">Выбрать</button></div>`).join('') : '';
     b.querySelectorAll('[data-sid]').forEach(r => r.onclick = () => addMealSheet(adoptShared(data.find(x => x.id === r.dataset.sid))));
   }, 300);
+}
+
+
+// ---------- admin ----------
+async function checkAdmin() {
+  if (!sb || !user) return;
+  const { data } = await sb.rpc('is_admin');
+  isAdmin = data === true;
+  if (isAdmin && tab === 'more') render();
+}
+async function adminCode() {
+  const { data } = await sb.from('app_config').select('value').eq('key', 'invite_code').maybeSingle();
+  sheet(`<h2 style="margin-top:0">Код доступа</h2><div class="dim">Нужен новым пользователям при регистрации. Текущий код:</div>
+    <input id="nc" value="${esc(data ? data.value : '')}" autocapitalize="none" autocomplete="off" style="margin:8px 0">
+    <div class="btns"><button class="btn" id="ok">Сохранить</button><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    $('#cancel').onclick = closeSheet;
+    $('#ok').onclick = async () => {
+      const v = $('#nc').value.trim(); if (v.length < 4) return alert('Минимум 4 символа');
+      const { error } = await sb.from('app_config').upsert({ key: 'invite_code', value: v });
+      if (error) return alert(error.message);
+      closeSheet();
+    };
+  });
+}
+async function adminBase() {
+  sheet('<div class="empty">Загрузка…</div>');
+  const [fx, ex] = await Promise.all([
+    sb.from('shared_foods').select('id,name,kcal,p,f,c').order('name').limit(500),
+    sb.from('shared_exercises').select('id,name').order('name').limit(500)]);
+  const foods = fx.data || [], exs = ex.data || [];
+  const draw = q => {
+    q = q.trim().toLowerCase();
+    const fl = foods.filter(f => f.name.toLowerCase().includes(q)), el = exs.filter(e => e.name.toLowerCase().includes(q));
+    $('#alist').innerHTML = `<div class="dim" style="margin:6px 0 2px">Продукты (${fl.length})</div>` +
+      (fl.map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-df="${f.id}">✕</button></div>`).join('') || '<div class="empty">—</div>') +
+      `<div class="dim" style="margin:10px 0 2px">Упражнения (${el.length})</div>` +
+      (el.map(e => `<div class="row"><div class="main">${esc(e.name)}</div><button class="btn del" data-de="${e.id}">✕</button></div>`).join('') || '<div class="empty">—</div>');
+    const del = (table, list, id) => async () => {
+      if (!confirm('Удалить из общей базы?')) return;
+      const { error } = await sb.from(table).delete().eq('id', id);
+      if (error) return alert(error.message);
+      list.splice(list.findIndex(x => x.id === id), 1); if (table === 'shared_exercises') loadSharedEx(); draw($('#aq').value);
+    };
+    document.querySelectorAll('[data-df]').forEach(b => b.onclick = del('shared_foods', foods, b.dataset.df));
+    document.querySelectorAll('[data-de]').forEach(b => b.onclick = del('shared_exercises', exs, b.dataset.de));
+  };
+  sheet(`<h2 style="margin-top:0">Общая база</h2><input id="aq" placeholder="Поиск…" autocomplete="off"><div id="alist"></div><div class="btns" style="margin-top:10px"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
+    $('#cancel').onclick = closeSheet; $('#aq').oninput = e => draw(e.target.value); draw('');
+  });
 }
 
 // ---------- shell ----------
