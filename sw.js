@@ -1,4 +1,4 @@
-const CACHE = 'gymbro-v12';
+const CACHE = 'gymbro-v13';
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'vendor/html5-qrcode.min.js', 'vendor/supabase.js', 'config.js', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -17,4 +17,21 @@ self.addEventListener('fetch', e => {
       return r;
     }).catch(() => caches.match(e.request))
   );
+});
+
+// Web Push: show the reminder, and open the right tab when it is tapped
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { title: 'GymBro', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'GymBro', {
+    body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || 'gymbro', data: { tab: d.tab || 'home' },
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const tab = (e.notification.data && e.notification.data.tab) || 'home';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) { if ('focus' in c) { c.postMessage({ type: 'goto', tab }); return c.focus(); } }
+    return self.clients.openWindow('./?tab=' + tab);
+  }));
 });
