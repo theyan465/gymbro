@@ -229,3 +229,7 @@ details.raw{margin-top:10px;font-size:12px;color:var(--dim)}details.raw pre{whit
 .sw span{flex:1;font-size:15px}
 .trow{display:flex;gap:8px;margin-top:10px}.trow input,.trow select{flex:1;min-width:0}
 input[type=time]{min-height:46px;-webkit-appearance:none;appearance:none}
+
+.authhead{display:flex;align-items:center;gap:14px;margin:6px 0 18px}
+.authhead img{border-radius:18px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+.authhead b{font-size:24px;letter-spacing:-.4px}

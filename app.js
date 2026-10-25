@@ -931,13 +931,21 @@ async function cloudInit() {
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
 
+let authMode = 'in', authDraft = { em: '', pw: '' };
 function viewAuth() {
+  const up = authMode === 'up';
   $('#top').innerHTML = '<h1>GymBro</h1>';
-  $('#view').innerHTML = `<div class="card"><h2>Вход</h2><div class="dim" style="margin-bottom:6px">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
-    <label>Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none"><label>Пароль (от 6 символов)</label><input id="pw" type="password" autocomplete="current-password">
-    <label>Код доступа (только для регистрации)</label><input id="ic" autocapitalize="none" autocomplete="off">
-    <div id="autherr" class="sub" style="color:var(--bad);margin-top:6px"></div>
-    <div class="btns" style="margin-top:8px"><button class="btn" id="login">Войти</button><button class="btn ghost" id="signup">Регистрация</button></div></div>`;
+  $('#view').innerHTML = `<div class="authhead"><img src="icons/icon-192.png" alt="" width="72" height="72"><div><b>GymBro</b><div class="dim small">Питание, тренировки, витамины и прогресс</div></div></div>
+    <div class="seg"><button class="${up ? '' : 'on'}" data-am="in">Вход</button><button class="${up ? 'on' : ''}" data-am="up">Регистрация</button></div>
+    <div class="card"><label style="margin-top:0">Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none" value="${esc(authDraft.em)}">
+      <label>Пароль${up ? ' (от 6 символов)' : ''}</label><input id="pw" type="password" autocomplete="${up ? 'new-password' : 'current-password'}" value="${esc(authDraft.pw)}">
+      ${up ? '<label>Код доступа</label><input id="ic" autocapitalize="none" autocomplete="off"><div class="dim small" style="margin-top:6px">Код выдаёт администратор приложения.</div>' : ''}
+      <div id="autherr" class="sub warn" style="margin-top:8px"></div>
+      <button class="btn full" id="${up ? 'signup' : 'login'}" style="margin:12px 0 0">${up ? 'Создать аккаунт' : 'Войти'}</button></div>
+    <div class="dim small" style="text-align:center">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>`;
+  document.querySelectorAll('[data-am]').forEach(b => b.onclick = () => {
+    authDraft = { em: $('#em').value, pw: $('#pw').value }; authMode = b.dataset.am; animate = true; render();
+  });
   bindAccount();
 }
 function bindAccount() {
@@ -949,10 +957,12 @@ function bindAccount() {
     err('…');
     const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } }) : await sb.auth.signInWithPassword({ email, password });
     if (error) return err(mode === 'up' && /database error|unexpected/i.test(error.message) ? 'Неверный код доступа' : error.message);
-    if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
+    if (!data.session) { authMode = 'in'; return err('Проверьте почту и подтвердите email, затем войдите.'); }
+    authDraft = { em: '', pw: '' }; authMode = 'in';
     user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); syncPush(); render();
   };
-  if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
+  if ($('#login')) $('#login').onclick = () => auth('in');
+  if ($('#signup')) $('#signup').onclick = () => auth('up');
   if ($('#admBase')) $('#admBase').onclick = adminBase;
   if ($('#admCode')) $('#admCode').onclick = adminCode;
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
