@@ -4,7 +4,8 @@
 const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
-  trainDays: [1, 3, 5], dayType: {}, templates: [], vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
+  trainDays: [1, 3, 5], dayType: {}, templates: [],
+  reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
 const fresh = () => structuredClone(DEFAULTS);
 let S;
@@ -56,6 +57,7 @@ const ICONS = {
   camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   bookmark: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -644,7 +646,7 @@ function viewVit() {
   const due = S.vitamins.filter(v => vitDue(v, day)), other = S.vitamins.filter(v => !vitDue(v, day));
   const done = due.filter(v => vitTaken(v, day)).length, st = vitStreak();
   const row = (v, isDue) => `<div class="vit ${vitTaken(v, day) ? 'on' : ''} ${isDue ? '' : 'off'} ${lastVit === v.id ? 'pop' : ''}" data-vit="${v.id}">
-      <span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div>
+      <span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.time, v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div>
       <button class="btn del" data-editvit="${v.id}" aria-label="Изменить">${ic('edit')}</button></div>`;
   // history: last 14 days
   const days = []; for (let i = 13; i >= 0; i--) days.push(shiftDay(today(), -i));
@@ -678,6 +680,7 @@ function vitForm(v) {
     <label>Дозировка</label><input id="vd" value="${esc(v ? v.dose : '')}" placeholder="1 таблетка, 2000 МЕ…">
     <label>Когда принимать</label><input id="vw" value="${esc(v ? v.when : '')}" placeholder="Утром, с едой…">
     <div class="chips" style="margin-top:6px">${['Утром', 'Днём', 'Вечером', 'С едой', 'Перед сном'].map(w => `<button class="chip" data-w="${w}">${w}</button>`).join('')}</div>
+    <label>Напоминание (необязательно)</label><input type="time" id="vtm" value="${esc(v ? v.time || '' : '')}">
     <label>Дни недели</label>${wdChips(days)}
     <div class="chips" style="margin-top:8px"><button class="chip" data-set="all">Каждый день</button><button class="chip" data-set="work">Будни</button><button class="chip" data-set="end">Выходные</button></div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button>${v ? `<button class="btn ghost danger" id="del">Удалить</button>` : ''}<button class="btn ghost" id="cancel">Отмена</button></div>`, p => {
@@ -690,7 +693,7 @@ function vitForm(v) {
     $('#cancel').onclick = closeSheet;
     $('#ok').onclick = () => {
       const name = $('#vn').value.trim(), ds = pickedDays(p); if (!name) return; if (!ds.length) return alert('Выберите хотя бы один день');
-      const data = { name, dose: $('#vd').value.trim(), when: $('#vw').value.trim(), days: ds };
+      const data = { name, dose: $('#vd').value.trim(), when: $('#vw').value.trim(), days: ds, time: $('#vtm').value };
       if (v) Object.assign(v, data); else S.vitamins.push({ id: uid(), created: today(), ...data });
       save(); okBtn($('#ok'), () => { closeSheet(); render(); }, 'Витамин сохранён');
     };
@@ -772,11 +775,12 @@ function viewMore() {
         ${mi('m-goals', 'bolt', 'Цели питания', `${S.goals.kcal} / ${S.goalsRest.kcal} ккал (тренировка / отдых)`)}
         ${mi('m-days', 'calendar', 'Тренировочные дни', dayNames())}
         ${mi('m-foods', 'utensils', 'Мои продукты', S.foods.length + ' шт.')}
+        ${mi('m-notify', 'bell', 'Уведомления', S.reminders.on ? 'Включены' : 'Выключены')}
         ${mi('m-data', 'db', 'Данные и копия', cloud ? 'Синхронизация, экспорт, импорт' : 'Экспорт и импорт')}
         ${isAdmin ? mi('m-admin', 'crown', 'Администратор', 'Общая база, код доступа') : ''}
       </div>
       ${cloud ? `<div class="card menu">${mi('logout', 'logout', 'Выйти', 'Данные останутся в облаке', 'danger')}</div>` : ''}`;
-    [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; nav(); }; });
+    [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['notify', 'm-notify'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; nav(); }; });
   } else if (moreSub === 'goals') {
     $('#view').innerHTML = back + `<div class="card"><h2><span class="hic">${ic('bolt')}Тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
       <div class="card"><h2><span class="hic">${ic('moon')}День отдыха</span></h2>${goalFields('r', S.goalsRest)}</div><button class="btn full" id="sg">Сохранить</button>`;
@@ -792,6 +796,9 @@ function viewMore() {
   } else if (moreSub === 'foods') {
     $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
+  } else if (moreSub === 'notify') {
+    $('#view').innerHTML = back + '<div id="npanel"><div class="empty">Проверяю…</div></div>';
+    drawNotify();
   } else if (moreSub === 'data') {
     $('#view').innerHTML = back + (cloud ? `<div class="card"><h2>Синхронизация</h2><div class="sub dim" id="syncst" style="margin-bottom:10px">${esc(syncState)}</div><button class="btn ghost" id="syncnow">${ic('refresh')}Синхронизировать</button></div>` : '') +
       `<div class="card"><h2>Резервная копия</h2><div class="dim small" style="margin-bottom:10px">${cloud ? 'Данные хранятся в вашем аккаунте. Экспорт — дополнительная копия на всякий случай.' : 'Данные хранятся только в этом браузере. Делайте экспорт время от времени.'}</div>
@@ -810,6 +817,73 @@ function viewMore() {
   }
   if ($('#back')) $('#back').onclick = () => { moreSub = null; nav(); };
   bindAccount();
+}
+
+
+// ---------- push notifications ----------
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const urlB64 = s => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+const swReady = () => Promise.race([navigator.serviceWorker.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('Service worker не готов, перезапустите приложение')), 4000))]);
+async function pushSub() { if (!pushSupported()) return null; return (await swReady()).pushManager.getSubscription(); }
+async function savePushSub(sub) {
+  const j = sub.toJSON();
+  const { error } = await sb.from('push_subscriptions').upsert({ user_id: user.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }, { onConflict: 'endpoint' });
+  return error;
+}
+async function enablePush() {
+  if (!pushSupported() || !CFG.vapidPublicKey) throw new Error('Уведомления недоступны в этом режиме');
+  const perm = await Notification.requestPermission(); // must be the first await: iOS needs a user gesture
+  if (perm !== 'granted') throw new Error('Разрешение не выдано');
+  const reg = await swReady();
+  const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(CFG.vapidPublicKey) });
+  const err = await savePushSub(sub); if (err) throw new Error(err.message);
+  S.reminders.on = true; save();
+}
+async function disablePush(keepSetting) {
+  try { const sub = await pushSub(); if (sub) { if (sb && user) await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); } } catch { /* nothing to remove */ }
+  if (!keepSetting) { S.reminders.on = false; save(); }
+}
+// keeps this device registered (and its time zone current) after login or app start
+async function syncPush() {
+  try { if (!sb || !user || !pushSupported() || Notification.permission !== 'granted' || !S.reminders.on) return; const sub = await pushSub(); if (sub) await savePushSub(sub); } catch { /* ignore */ }
+}
+async function drawNotify() {
+  const box = $('#npanel'); if (!box) return;
+  const R = S.reminders;
+  if (!(CFG.url && user)) { box.innerHTML = '<div class="card"><div class="dim">Для уведомлений нужен вход в аккаунт.</div></div>'; return; }
+  if (!pushSupported()) { box.innerHTML = `<div class="card"><h2>Установите приложение</h2><div class="dim small">Уведомления работают на iPhone с iOS 16.4 и новее, только если приложение добавлено на экран «Домой»: Safari → «Поделиться» → «На экран Домой». Откройте приложение с иконки и вернитесь сюда.</div></div>`; return; }
+  let sub = null; try { sub = await pushSub(); } catch (e) { box.innerHTML = `<div class="card"><div class="sub warn">${esc(e.message)}</div></div>`; return; }
+  if (!$('#npanel')) return;
+  const perm = Notification.permission;
+  if (!(perm === 'granted' && sub && R.on)) {
+    box.innerHTML = `<div class="card"><h2>Напоминания</h2><div class="dim small" style="margin-bottom:12px">Витамины, тренировка, питание и взвешивание в нужное время. Время настраивается после включения.</div>
+      ${perm === 'denied' ? '<div class="sub warn">Уведомления запрещены. Разрешите их: Настройки iPhone → Уведомления → GymBro.</div>' : `<button class="btn full" id="npush">${ic('bell')}Включить уведомления</button>`}<div id="nerr" class="sub warn"></div></div>`;
+    if ($('#npush')) $('#npush').onclick = async () => { try { await enablePush(); toast('Уведомления включены'); drawNotify(); } catch (e) { $('#nerr').textContent = e.message || String(e); } };
+    return;
+  }
+  const sw = (id, on, text) => `<label class="sw"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><i></i><span>${text}</span></label>`;
+  box.innerHTML = `
+    <div class="card"><h2>Витамины</h2>${sw('nvit', R.vit !== false, 'Напоминать о витаминах')}<div class="dim small" style="margin-top:6px">Время задаётся у каждого витамина: Витамины → карандаш → «Напоминание». Если вы уже отметили витамин, напоминания не будет.</div></div>
+    <div class="card"><h2>Тренировка</h2>${sw('ntr', R.train.on, 'В тренировочные дни, если тренировка не записана')}<div class="trow"><input type="time" id="ntrt" value="${esc(R.train.time)}"></div></div>
+    <div class="card"><h2>Питание</h2>${sw('nfo', R.food.on, 'Если за день нет записей о еде')}<div class="trow"><input type="time" id="nfot" value="${esc(R.food.time)}"></div></div>
+    <div class="card"><h2>Взвешивание</h2>${sw('nwe', R.weigh.on, 'Раз в неделю, если вес не записан')}
+      <div class="trow"><select id="nwed">${WD_ORDER.map(d => `<option value="${d}" ${R.weigh.day === d ? 'selected' : ''}>${['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'][d]}</option>`).join('')}</select><input type="time" id="nwet" value="${esc(R.weigh.time)}"></div></div>
+    <div class="card"><div class="btns"><button class="btn ghost" id="ntest">${ic('bell')}Тестовое уведомление</button><button class="btn ghost danger" id="noff">Выключить</button></div><div id="nmsg" class="sub dim" style="margin-top:8px"></div></div>`;
+  const bind = (id, fn) => { $('#' + id).onchange = e => { fn(e.target); save(); }; };
+  bind('nvit', t => { R.vit = t.checked; }); bind('ntr', t => { R.train.on = t.checked; }); bind('ntrt', t => { R.train.time = t.value; });
+  bind('nfo', t => { R.food.on = t.checked; }); bind('nfot', t => { R.food.time = t.value; });
+  bind('nwe', t => { R.weigh.on = t.checked; }); bind('nwed', t => { R.weigh.day = +t.value; }); bind('nwet', t => { R.weigh.time = t.value; });
+  $('#noff').onclick = async () => { await disablePush(false); toast('Уведомления выключены'); drawNotify(); };
+  $('#ntest').onclick = async () => {
+    const m = $('#nmsg'); m.className = 'sub dim'; m.textContent = 'Отправляю…';
+    try {
+      await push();
+      const { data, error } = await sb.functions.invoke('send-reminders', { body: { test: true } });
+      if (error) throw error;
+      if (!data || !data.devices) { m.className = 'sub warn'; m.textContent = 'Нет зарегистрированных устройств. Выключите и включите уведомления.'; return; }
+      m.textContent = 'Отправлено. Если уведомление не пришло за минуту, проверьте разрешения в настройках iPhone.';
+    } catch (e) { m.className = 'sub warn'; m.textContent = 'Не удалось: ' + (e && e.message || e) + '. Проверьте, что функция send-reminders создана в Supabase.'; }
+  };
 }
 
 // ---------- cloud sync (Supabase, optional) ----------
@@ -852,7 +926,7 @@ async function cloudInit() {
     sb = window.supabase.createClient(CFG.url, CFG.anonKey);
     try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
     sb.auth.onAuthStateChange((_e, sess) => { user = sess ? sess.user : null; });
-    if (user) { await pull(); loadSharedEx(); checkAdmin(); }
+    if (user) { await pull(); loadSharedEx(); checkAdmin(); syncPush(); }
   } finally { authReady = true; render(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
@@ -876,7 +950,7 @@ function bindAccount() {
     const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password, options: { data: { invite_code: code } } }) : await sb.auth.signInWithPassword({ email, password });
     if (error) return err(mode === 'up' && /database error|unexpected/i.test(error.message) ? 'Неверный код доступа' : error.message);
     if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
-    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); render();
+    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); syncPush(); render();
   };
   if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
   if ($('#admBase')) $('#admBase').onclick = adminBase;
@@ -884,7 +958,7 @@ function bindAccount() {
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
-    await push(); await sb.auth.signOut(); user = null; isAdmin = false;
+    await push(); await disablePush(true); await sb.auth.signOut(); user = null; isAdmin = false;
     S = fresh(); moreSub = null; localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
@@ -996,6 +1070,8 @@ function render() {
   ({ home: viewHome, food: viewFood, train: viewTrain, vit: viewVit, body: viewBody, stats: viewStats, more: viewMore })[tab]();
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === 'more') moreSub = null; animate = true; window.scrollTo(0, 0); render(); });
+const qTab = new URLSearchParams(location.search).get('tab'); if (qTab && TITLES[qTab]) tab = qTab;
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'goto' && TITLES[e.data.tab]) { tab = e.data.tab; day = today(); animate = true; render(); } });
 // new day: checkmarks reset automatically because history is keyed by date
 function checkRollover() {
   const t = today(); if (t === lastToday) return;
