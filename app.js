@@ -2,10 +2,10 @@
 
 // ---------- storage ----------
 const KEY = 'gymbro.v1';
-const DEFAULTS = { foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, workouts: [], body: [] };
+const DEFAULTS = { foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, workouts: [], body: [], updatedAt: 0 };
 let S;
 try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { S = structuredClone(DEFAULTS); }
-const save = () => localStorage.setItem(KEY, JSON.stringify(S));
+function save() { S.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); schedulePush(); }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 // ---------- helpers ----------
@@ -323,13 +323,14 @@ function viewStats() {
 // ---------- more ----------
 function viewMore() {
   const g = S.goals;
-  $('#view').innerHTML = `<div class="card"><h2>Цели на день</h2><div class="grid2">
+  $('#view').innerHTML = accountCard() + `<div class="card"><h2>Цели на день</h2><div class="grid2">
     <div><label>Ккал</label><input inputmode="numeric" id="gk" value="${g.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" id="gp" value="${g.p}"></div>
     <div><label>Жиры, г</label><input inputmode="numeric" id="gf" value="${g.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" id="gc" value="${g.c}"></div></div>
     <button class="btn" id="sg" style="margin-top:10px">Сохранить</button></div>
     <div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-delfood="${f.id}">✕</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>
     <div class="card"><h2>Резервная копия</h2><div class="dim" style="margin-bottom:8px">Данные хранятся только в этом браузере. Делайте экспорт время от времени.</div>
     <div class="btns"><button class="btn ghost" id="exp">Экспорт JSON</button><button class="btn ghost" id="imp">Импорт</button></div><input type="file" id="impf" accept="application/json" hidden></div>`;
+  bindAccount();
   $('#sg').onclick = () => { S.goals = { kcal: num($('#gk').value), p: num($('#gp').value), f: num($('#gf').value), c: num($('#gc').value) }; save(); alert('Сохранено'); };
   document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
   $('#exp').onclick = () => {
@@ -340,6 +341,80 @@ function viewMore() {
   $('#impf').onchange = async e => {
     try { const d = JSON.parse(await e.target.files[0].text()); if (!confirm('Заменить текущие данные импортированными?')) return; S = Object.assign({}, DEFAULTS, d); save(); render(); }
     catch { alert('Неверный файл'); }
+  };
+}
+
+
+// ---------- cloud sync (Supabase, optional) ----------
+const CFG = window.GYMBRO_CONFIG || {};
+const SYNC_KEY = 'gymbro.sync';
+let sb = null, user = null, syncState = '', pushTimer = null;
+const getSync = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch { return {}; } };
+const setSync = o => localStorage.setItem(SYNC_KEY, JSON.stringify(o));
+const isEmptyState = () => !S.foods.length && !S.meals.length && !S.workouts.length && !S.body.length;
+function setStatus(t) { syncState = t; const el = $('#syncst'); if (el) el.textContent = t; }
+function schedulePush() { if (!sb || !user) return; clearTimeout(pushTimer); pushTimer = setTimeout(push, 1500); setStatus('Есть несохранённые изменения…'); }
+async function push() {
+  if (!sb || !user) return;
+  clearTimeout(pushTimer);
+  const at = S.updatedAt;
+  const { error } = await sb.from('user_data').upsert({ user_id: user.id, data: S, updated_at: new Date().toISOString() });
+  if (error) return setStatus('Ошибка синхронизации: ' + error.message);
+  setSync({ uid: user.id, at });
+  setStatus('Синхронизировано в ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+}
+async function pull() {
+  if (!sb || !user) return;
+  setStatus('Синхронизация…');
+  const { data: row, error } = await sb.from('user_data').select('data').eq('user_id', user.id).maybeSingle();
+  if (error) return setStatus('Ошибка синхронизации: ' + error.message);
+  const remote = row && row.data;
+  if (!remote) return push();
+  const sy = getSync(), same = sy.uid === user.id;
+  const localDirty = same ? S.updatedAt > (sy.at || 0) : !isEmptyState();
+  const remoteNewer = (remote.updatedAt || 0) > (same ? sy.at || 0 : 0);
+  if (!remoteNewer) return localDirty ? push() : setStatus('Синхронизировано');
+  if (localDirty && !confirm('На устройстве и в облаке разные данные.\nОК — взять данные из облака (локальные заменятся).\nОтмена — загрузить данные этого устройства в облако.')) return push();
+  S = Object.assign({}, structuredClone(DEFAULTS), remote);
+  localStorage.setItem(KEY, JSON.stringify(S)); setSync({ uid: user.id, at: S.updatedAt });
+  setStatus('Загружено из облака'); render();
+}
+async function cloudInit() {
+  if (!CFG.url || !CFG.anonKey || !window.supabase) return;
+  sb = window.supabase.createClient(CFG.url, CFG.anonKey);
+  try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
+  sb.auth.onAuthStateChange((_e, s) => { user = s ? s.user : null; });
+  if (user) await pull();
+  render();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
+
+function accountCard() {
+  if (!CFG.url) return '';
+  if (user) return `<div class="card"><h2>Аккаунт</h2><div>${esc(user.email)}</div><div class="sub dim" id="syncst" style="margin:4px 0 8px">${esc(syncState)}</div>
+    <div class="btns"><button class="btn ghost" id="syncnow">Синхронизировать</button><button class="btn ghost" id="logout">Выйти</button></div></div>`;
+  return `<div class="card"><h2>Аккаунт</h2><div class="dim" style="margin-bottom:6px">Войдите, чтобы данные хранились в облаке и были на всех ваших устройствах.</div>
+    <label>Email</label><input id="em" type="email" autocomplete="email" autocapitalize="none"><label>Пароль (от 6 символов)</label><input id="pw" type="password" autocomplete="current-password">
+    <div id="autherr" class="sub" style="color:var(--bad);margin-top:6px"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn" id="login">Войти</button><button class="btn ghost" id="signup">Регистрация</button></div></div>`;
+}
+function bindAccount() {
+  const err = t => { const e = $('#autherr'); if (e) e.textContent = t; };
+  const auth = async mode => {
+    const email = $('#em').value.trim(), password = $('#pw').value;
+    if (!email || password.length < 6) return err('Введите email и пароль от 6 символов');
+    err('…');
+    const { data, error } = mode === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+    if (error) return err(error.message);
+    if (!data.session) return err('Проверьте почту и подтвердите email, затем нажмите «Войти».');
+    user = data.session.user; await pull(); render();
+  };
+  if ($('#login')) { $('#login').onclick = () => auth('in'); $('#signup').onclick = () => auth('up'); }
+  if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
+  if ($('#logout')) $('#logout').onclick = async () => {
+    if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
+    await push(); await sb.auth.signOut(); user = null;
+    S = structuredClone(DEFAULTS); localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
 
@@ -358,4 +433,5 @@ function render() {
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; window.scrollTo(0, 0); render(); });
 render();
+cloudInit();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
