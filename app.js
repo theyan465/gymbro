@@ -5,6 +5,7 @@ const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
   trainDays: [1, 3, 5], dayType: {}, templates: [],
+  wgoal: { mode: 'hold', rate: 0.5 },
   rest: { on: true, sec: 90, sound: true }, plates: { bar: 20, list: [25, 20, 15, 10, 5, 2.5, 1.25] }, exMuscle: {},
   reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
@@ -117,14 +118,14 @@ function chart(canvas, series, opts = {}) {
   const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = canvas.clientHeight;
   canvas.width = W * dpr; canvas.height = H * dpr;
   const g = canvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
-  const pts = series.filter(p => isFinite(p.y));
+  const pts = series.filter(p => isFinite(p.y)), ex = (opts.extra || []).filter(p => isFinite(p.y));
   if (pts.length < 1) { g.fillStyle = '#8b95a3'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText('Нет данных', W / 2, H / 2); return; }
   const L = 38, R = 8, T = 10, B = 20;
-  let ys = pts.map(p => p.y), lo = Math.min(...ys), hi = Math.max(...ys);
+  let ys = pts.map(p => p.y).concat(ex.map(p => p.y)), lo = Math.min(...ys), hi = Math.max(...ys);
   if (opts.zero) lo = 0;
   if (hi === lo) { hi += 1; lo -= 1; }
   const pad = (hi - lo) * 0.1; if (!opts.zero) { lo -= pad; } hi += pad;
-  const xs = pts.map(p => p.x), x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
+  const xs = pts.map(p => p.x).concat(ex.map(p => p.x)), x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
   const X = x => L + (x1 === x0 ? (W - L - R) / 2 : (x - x0) / (x1 - x0) * (W - L - R));
   const Y = y => T + (1 - (y - lo) / (hi - lo)) * (H - T - B);
   g.strokeStyle = '#2a313b'; g.fillStyle = '#8b95a3'; g.font = '11px sans-serif'; g.textAlign = 'right';
@@ -138,9 +139,9 @@ function chart(canvas, series, opts = {}) {
     g.fillStyle = col; pts.forEach(p => { const y = Y(p.y); g.fillRect(X(p.x) - bw / 2, y, bw, Y(lo) - y); });
     if (opts.line != null) { g.strokeStyle = '#fbbf24'; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(L, Y(opts.line)); g.lineTo(W - R, Y(opts.line)); g.stroke(); g.setLineDash([]); }
   } else {
-    g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
-    pts.forEach((p, i) => i ? g.lineTo(X(p.x), Y(p.y)) : g.moveTo(X(p.x), Y(p.y))); g.stroke();
-    g.fillStyle = col; pts.forEach(p => { g.beginPath(); g.arc(X(p.x), Y(p.y), 3, 0, 7); g.fill(); });
+    if (!opts.dotsOnly) { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(X(p.x), Y(p.y)) : g.moveTo(X(p.x), Y(p.y))); g.stroke(); }
+    g.fillStyle = col; g.globalAlpha = opts.dotsOnly ? 0.55 : 1; pts.forEach(p => { g.beginPath(); g.arc(X(p.x), Y(p.y), opts.dotsOnly ? 3.5 : 3, 0, 7); g.fill(); }); g.globalAlpha = 1;
+    if (ex.length > 1) { g.strokeStyle = opts.extraColor || '#34d399'; g.lineWidth = 3; g.lineJoin = 'round'; g.beginPath(); ex.forEach((p, i) => i ? g.lineTo(X(p.x), Y(p.y)) : g.moveTo(X(p.x), Y(p.y))); g.stroke(); }
   }
 }
 const ts = k => new Date(k + 'T12:00:00').getTime();
@@ -996,33 +997,148 @@ function vitForm(v) {
   });
 }
 
+
+// ---------- weight trend and adaptive calorie target ----------
+const weightPts = () => S.body.filter(b => b.weight > 0).map(b => ({ date: b.date, t: ts(b.date), w: b.weight })).sort((a, b) => a.t - b.t);
+function weightTrend() {
+  const out = []; let tr = null, prev = 0;
+  for (const p of weightPts()) { if (tr === null) tr = p.w; else tr += (1 - Math.exp(-((p.t - prev) / 864e5) / 6)) * (p.w - tr); prev = p.t; out.push({ x: p.t, y: Math.round(tr * 100) / 100, date: p.date }); }
+  return out;
+}
+function adaptive() {
+  const end = shiftDay(today(), -1), start = shiftDay(end, -27), logged = [];
+  for (let k = start; k <= end; k = shiftDay(k, 1)) { const kc = sumMeals(k).kcal; if (kc >= 800) logged.push(kc); }
+  const tr = weightTrend().filter(p => p.date >= shiftDay(start, -3)), span = tr.length > 1 ? (tr[tr.length - 1].x - tr[0].x) / 864e5 : 0;
+  if (logged.length < 10 || tr.length < 4 || span < 10) return { ready: false, logged: logged.length, weights: tr.length, span: Math.round(span) };
+  const n = tr.length, mx = tr.reduce((a, p) => a + p.x, 0) / n, my = tr.reduce((a, p) => a + p.y, 0) / n;
+  let sxy = 0, sxx = 0; tr.forEach(p => { sxy += (p.x - mx) * (p.y - my); sxx += (p.x - mx) ** 2; });
+  const slope = sxx ? sxy / sxx * 864e5 : 0, avg = logged.reduce((a, b) => a + b, 0) / logged.length, tdee = avg - slope * 7700;
+  const sign = S.wgoal.mode === 'lose' ? -1 : S.wgoal.mode === 'gain' ? 1 : 0;
+  return { ready: true, avg, slopeWeek: slope * 7, tdee, target: Math.max(1200, Math.min(5000, tdee + sign * S.wgoal.rate * 7700 / 7)), logged: logged.length };
+}
+function adaptCard() {
+  const A = adaptive(), W = S.wgoal, nT = S.trainDays.length, cur = (S.goals.kcal * nT + S.goalsRest.kcal * (7 - nT)) / 7;
+  const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(r1(v));
+  return `<div class="card"><h2>Адаптивная норма</h2>
+    <div class="chips" style="flex-wrap:wrap">${[['lose', 'Сбросить вес'], ['hold', 'Держать вес'], ['gain', 'Набрать вес']].map(([k, n]) => `<button class="chip ${W.mode === k ? 'on' : ''}" data-wm="${k}">${n}</button>`).join('')}</div>
+    ${W.mode !== 'hold' ? `<div class="chips" style="flex-wrap:wrap">${[0.25, 0.5, 0.75, 1].map(r => `<button class="chip ${W.rate === r ? 'on' : ''}" data-wr="${r}">${r} кг/нед</button>`).join('')}</div>` : ''}
+    ${A.ready ? `<div class="adapt"><div><small>Ваш реальный расход</small><b>≈ ${Math.round(A.tdee)}</b> ккал/день</div><div><small>Рекомендуемая норма</small><b class="acc">${Math.round(A.target)}</b> ккал/день</div></div>
+      <div class="sub dim">Вы едите в среднем ${Math.round(A.avg)} ккал (${A.logged} дней с записями из 28), вес меняется на ${sgn(A.slopeWeek)} кг в неделю. Сейчас ваша норма в среднем ${Math.round(cur)} ккал.</div>
+      <button class="btn full" id="adapply" style="margin-top:10px">Применить: ${Math.round(A.target - cur) >= 0 ? '+' : '−'}${Math.abs(Math.round(A.target - cur))} ккал к норме</button>`
+      : `<div class="sub dim" style="margin-top:6px">Нужно больше данных. Записано дней с едой: <b>${A.logged}</b> из 10 · замеров веса: <b>${A.weights}</b> из 4 за <b>${A.span}</b> из 10 дней. Взвешивайтесь и записывайте всю еду, примерно через 2 недели появится оценка.</div>`}
+    <div class="dim small" style="margin-top:8px">Оценка расходов считается как «сколько вы едите» минус «сколько запасов тела вы теряете или набираете». Она точна, только если записана вся еда.</div></div>`;
+}
+function bindAdapt() {
+  document.querySelectorAll('[data-wm]').forEach(b => b.onclick = () => { S.wgoal.mode = b.dataset.wm; save(); render(); });
+  document.querySelectorAll('[data-wr]').forEach(b => b.onclick = () => { S.wgoal.rate = +b.dataset.wr; save(); render(); });
+  if ($('#adapply')) $('#adapply').onclick = () => {
+    const A = adaptive(), nT = S.trainDays.length, cur = (S.goals.kcal * nT + S.goalsRest.kcal * (7 - nT)) / 7, delta = Math.round(A.target - cur);
+    if (!confirm(`Изменить норму на ${delta >= 0 ? '+' : '−'}${Math.abs(delta)} ккал?\nТренировочный день: ${S.goals.kcal} → ${S.goals.kcal + delta}\nДень отдыха: ${S.goalsRest.kcal} → ${S.goalsRest.kcal + delta}\nУглеводы подстроятся.`)) return;
+    for (const g of [S.goals, S.goalsRest]) { g.kcal += delta; g.c = Math.max(0, g.c + Math.round(delta / 4)); }
+    save(); okBtn($('#adapply'), () => render(), 'Норма обновлена');
+  };
+}
+
+// ---------- progress photos (Supabase Storage, private bucket) ----------
+const PHOTO_BUCKET = 'progress-photos', urlCache = {};
+async function compressImage(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), sc = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('не удалось сжать фото')), 'image/jpeg', 0.82));
+}
+async function photoUrls(paths) {
+  const need = paths.filter(p => !urlCache[p] || urlCache[p].exp < Date.now());
+  if (need.length && sb && user) {
+    const { data } = await sb.storage.from(PHOTO_BUCKET).createSignedUrls(need, 3600);
+    (data || []).forEach(x => { if (x.signedUrl) urlCache[x.path] = { url: x.signedUrl, exp: Date.now() + 3300e3 }; });
+  }
+  return paths.map(p => (urlCache[p] && urlCache[p].url) || '');
+}
+const allPhotos = () => S.body.flatMap(r => (r.photos || []).map(path => ({ path, date: r.date }))).sort((a, b) => b.date.localeCompare(a.date));
+async function hydratePhotos() {
+  const els = [...document.querySelectorAll('[data-ph]')], urls = await photoUrls([...new Set(els.map(e => e.dataset.ph))]), map = {};
+  [...new Set(els.map(e => e.dataset.ph))].forEach((p, i) => { map[p] = urls[i]; });
+  els.forEach(e => { if (map[e.dataset.ph]) e.style.backgroundImage = `url("${map[e.dataset.ph]}")`; });
+}
+function weightOn(date) { const r = S.body.find(b => b.date === date && b.weight); return r ? r.weight : null; }
+async function photoView(path, other) {
+  const all = allPhotos(), a = all.find(x => x.path === path); if (!a) return;
+  const b = other ? all.find(x => x.path === other) : null, [ua, ub] = await photoUrls([a.path, b ? b.path : a.path]);
+  const wa = weightOn(a.date), wb = b ? weightOn(b.date) : null;
+  const cap = (x, w) => `<div class="pcap"><b>${fmtDay(x.date)}</b>${w ? ` · ${w} кг` : ''}</div>`;
+  let diff = '';
+  if (b && wa && wb && a.date !== b.date) { const [o, n] = a.date < b.date ? [[a, wa], [b, wb]] : [[b, wb], [a, wa]], d = r1(n[1] - o[1]), days = Math.round((ts(n[0].date) - ts(o[0].date)) / 864e5); diff = `<div class="sub dim" style="text-align:center">Вес: ${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d)} кг за ${days} ${plural(days, ['день', 'дня', 'дней'])}</div>`; }
+  sheet(`<h2 class="sh">${b ? 'Сравнение' : 'Фото'}</h2>
+    <div class="${b ? 'cmp' : 'one'}"><figure><img src="${ua}" alt="">${cap(a, wa)}</figure>${b ? `<figure><img src="${ub}" alt="">${cap(b, wb)}</figure>` : ''}</div>${diff}
+    <label>${b ? 'Сравнить с другой датой' : 'Сравнить с…'}</label><div class="chips" style="flex-wrap:wrap">${all.filter(x => x.path !== a.path).map(x => `<button class="chip ${b && x.path === b.path ? 'on' : ''}" data-cmp="${x.path}">${esc(fmtDay(x.date))}</button>`).join('') || '<span class="dim small">Нужно хотя бы два фото</span>'}</div>
+    <div class="btns" style="margin-top:14px">${b ? `<button class="btn ghost" id="pone">Одно фото</button>` : ''}<button class="btn ghost danger" id="pdel">Удалить это фото</button></div>`, p => {
+    p.querySelectorAll('[data-cmp]').forEach(c => c.onclick = () => photoView(a.path, c.dataset.cmp));
+    if ($('#pone')) $('#pone').onclick = () => photoView(a.path);
+    $('#pdel').onclick = async () => {
+      if (!confirm('Удалить это фото?')) return;
+      try { await sb.storage.from(PHOTO_BUCKET).remove([a.path]); } catch { /* record is removed anyway */ }
+      const r = S.body.find(x => (x.photos || []).includes(a.path)); r.photos = r.photos.filter(x => x !== a.path); if (!r.photos.length) delete r.photos;
+      if (!MEAS.some(([k]) => r[k]) && !r.photos) S.body = S.body.filter(x => x !== r);
+      save(); closeSheet(); render();
+    };
+  });
+}
+
 // ---------- body ----------
 const MEAS = [['weight', 'Вес, кг'], ['waist', 'Талия'], ['chest', 'Грудь'], ['hips', 'Бёдра'], ['armL', 'Бицепс левый'], ['armR', 'Бицепс правый'], ['thighL', 'Бедро левое'], ['thighR', 'Бедро правое']];
 let statView = 'charts';
 const seg = () => `<div class="seg"><button class="${statView === 'charts' ? 'on' : ''}" data-sv="charts">Графики</button><button class="${statView === 'muscle' ? 'on' : ''}" data-sv="muscle">Мышцы</button><button class="${statView === 'body' ? 'on' : ''}" data-sv="body">Замеры</button></div>`;
 const bindSeg = () => document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { statView = b.dataset.sv; animate = true; render(); });
 function bodySheet(date) {
-  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = typeof date === 'string' ? date : today();
+  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = typeof date === 'string' ? date : today(), canPhoto = !!(sb && user);
+  let pend = [];
   sheet(`<h2 class="sh">Замер · ${fmtDay(d)}</h2><div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}${k === 'weight' ? '' : ', см'}</label><input inputmode="decimal" data-m="${k}" placeholder="${last[k] || ''}"></div>`).join('')}</div>
-    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
-    $('#cancel').onclick = closeSheet;
-    $('#ok').onclick = () => {
+    <label>Фото прогресса <small class="dim">— необязательно</small></label>
+    ${canPhoto ? `${photoPicker('pp')}<div id="pthumbs" class="thumbs"></div>` : '<div class="dim small">Фото доступны после входа в аккаунт.</div>'}
+    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button></div>`, p => {
+    const drawThumbs = () => {
+      $('#pthumbs').innerHTML = pend.map((x, i) => `<div class="th" style="background-image:url(${x.url})"><button data-rmp="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('');
+      p.querySelectorAll('[data-rmp]').forEach(b => b.onclick = () => { URL.revokeObjectURL(pend[+b.dataset.rmp].url); pend.splice(+b.dataset.rmp, 1); drawThumbs(); });
+    };
+    if (canPhoto) bindPicker('pp', async f => { try { const blob = await compressImage(f); pend.push({ blob, url: URL.createObjectURL(blob) }); drawThumbs(); } catch (e) { toast('Не удалось обработать фото'); } });
+    $('#ok').onclick = async () => {
       const rec = { id: uid(), date: d }; let any = false;
       document.querySelectorAll('[data-m]').forEach(i => { const v = num(i.value); if (v > 0) { rec[i.dataset.m] = v; any = true; } });
-      if (!any) return;
-      const ex = S.body.find(b => b.date === d); if (ex) Object.assign(ex, rec, { id: ex.id }); else S.body.push(rec);
-      save(); okBtn($('#ok'), () => { closeSheet(); render(); }, 'Замер сохранён');
+      if (!any && !pend.length) return;
+      const paths = [];
+      if (pend.length) {
+        $('#ok').textContent = 'Загружаю фото…';
+        for (const x of pend) {
+          const path = `${user.id}/${d}-${uid()}.jpg`, { error } = await sb.storage.from(PHOTO_BUCKET).upload(path, x.blob, { contentType: 'image/jpeg' });
+          if (error) { alert('Фото не загрузилось: ' + error.message + '\nПроверьте, что в Supabase создано хранилище progress-photos (SQL из supabase-photos.sql).'); break; }
+          paths.push(path);
+        }
+        $('#ok').textContent = 'Сохранить';
+        if (!any && !paths.length) return;
+      }
+      const ex = S.body.find(b => b.date === d);
+      if (ex) { const keep = ex.photos || []; Object.assign(ex, rec, { id: ex.id }); if (keep.length || paths.length) ex.photos = [...keep, ...paths]; }
+      else { if (paths.length) rec.photos = paths; S.body.push(rec); }
+      save(); okBtn($('#ok'), () => { closeSheet(); render(); }, paths.length ? 'Замер и фото сохранены' : 'Замер сохранён');
     };
   });
 }
 function viewBody() {
-  const rows = [...S.body].sort((a, b) => b.date.localeCompare(a.date));
-  $('#view').innerHTML = seg() + `<button class="btn full" id="addB">${ic('plus')}Замер</button>
-    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ')}</div></div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
+  const rows = [...S.body].sort((a, b) => b.date.localeCompare(a.date)), photos = allPhotos();
+  const meas = r => MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ');
+  $('#view').innerHTML = seg() + `<button class="btn full" id="addB">${ic('plus')}Замер и фото</button>
+    ${photos.length ? `<div class="card"><h2>Фото прогресса <button class="btn sm ghost" id="pcmp">${ic('copy')}Сравнить</button></h2><div class="strip">${photos.map(x => `<button class="ph" data-ph="${x.path}"><span>${esc(fmtDay(x.date))}</span></button>`).join('')}</div></div>` : ''}
+    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${meas(r) || 'Только фото'}</div>${r.photos && r.photos.length ? `<div class="thumbs sm">${r.photos.map(p => `<button class="th" data-ph="${p}"></button>`).join('')}</div>` : ''}</div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
   bindSeg(); $('#addB').onclick = () => bodySheet();
-  document.querySelectorAll('[data-delb]').forEach(b => b.onclick = () => { S.body = S.body.filter(x => x.id !== b.dataset.delb); save(); render(); });
+  document.querySelectorAll('[data-ph]').forEach(e => e.onclick = () => photoView(e.dataset.ph));
+  if ($('#pcmp')) $('#pcmp').onclick = () => { if (photos.length < 2) return toast('Нужно хотя бы два фото'); photoView(photos[0].path, photos[photos.length - 1].path); };
+  document.querySelectorAll('[data-delb]').forEach(b => b.onclick = () => {
+    const r = S.body.find(x => x.id === b.dataset.delb); if (!confirm('Удалить запись' + (r.photos ? ' вместе с фото' : '') + '?')) return;
+    if (r.photos && sb && user) sb.storage.from(PHOTO_BUCKET).remove(r.photos).catch(() => {});
+    S.body = S.body.filter(x => x.id !== r.id); save(); render();
+  });
+  hydratePhotos();
 }
-
 
 // ---------- muscle groups: weekly volume ----------
 const MUSCLES = [['chest', 'Грудь'], ['back', 'Спина'], ['legs', 'Ноги'], ['glutes', 'Ягодицы'], ['shoulders', 'Плечи'], ['biceps', 'Бицепс'], ['triceps', 'Трицепс'], ['abs', 'Пресс'], ['calves', 'Икры'], ['cardio', 'Кардио'], ['other', 'Другое']];
@@ -1090,16 +1206,21 @@ function viewStats() {
   if (statView === 'body') return viewBody();
   if (statView === 'muscle') return viewMuscle();
   const names = exNames(); if (!statSel.ex || !names.includes(statSel.ex)) statSel.ex = names[0] || null;
-  $('#view').innerHTML = seg() + `
-    <div class="card"><h2>Вес и замеры</h2><div class="chips">${MEAS.map(([k, n]) => `<button class="chip ${statSel.m === k ? 'on' : ''}" data-m="${k}">${n.replace(', кг', '')}</button>`).join('')}</div><canvas class="chart" id="c1"></canvas></div>
+  $('#view').innerHTML = seg() + adaptCard() + `
+    <div class="card"><h2>Вес и замеры</h2><div class="chips">${MEAS.map(([k, n]) => `<button class="chip ${statSel.m === k ? 'on' : ''}" data-m="${k}">${n.replace(', кг', '')}</button>`).join('')}</div><canvas class="chart" id="c1"></canvas><div id="wtr" class="sub dim"></div></div>
     <div class="card"><h2>Калории за 14 дней <small>цель сегодня ${goalFor(today()).kcal}</small></h2><canvas class="chart" id="c2"></canvas></div>
     <div class="card"><h2>Упражнение</h2>${names.length ? `<div class="chips">${names.map(n => `<button class="chip ${statSel.ex === n ? 'on' : ''}" data-e="${esc(n)}">${esc(n)}</button>`).join('')}</div>
       <div class="dim" style="margin:4px 0">Расчётный 1ПМ (лучший подход за день), кг</div><canvas class="chart" id="c3"></canvas>
       <div class="dim" style="margin:4px 0">Объём за тренировку, кг</div><canvas class="chart" id="c4"></canvas><div id="prs" class="sub dim"></div>` : '<div class="empty">Нет данных по тренировкам</div>'}</div>`;
-  bindSeg();
+  bindSeg(); bindAdapt();
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { statSel.m = b.dataset.m; render(); });
   document.querySelectorAll('[data-e]').forEach(b => b.onclick = () => { statSel.ex = b.dataset.e; render(); });
-  chart($('#c1'), S.body.filter(b => b[statSel.m]).map(b => ({ x: ts(b.date), y: b[statSel.m] })).sort((a, b) => a.x - b.x), { color: '#60a5fa' });
+  const isW = statSel.m === 'weight', trd = isW ? weightTrend() : [];
+  chart($('#c1'), S.body.filter(b => b[statSel.m]).map(b => ({ x: ts(b.date), y: b[statSel.m] })).sort((a, b) => a.x - b.x), isW ? { color: '#60a5fa', dotsOnly: true, extra: trd, extraColor: '#34d399' } : { color: '#60a5fa' });
+  if (isW && trd.length) {
+    const now = trd[trd.length - 1], wk = [...trd].reverse().find(p => p.x <= now.x - 6.5 * 864e5), d7 = wk ? r1(now.y - wk.y) : null;
+    $('#wtr').innerHTML = `<span style="color:var(--acc)">●</span> тренд ${r1(now.y)} кг${d7 !== null ? ` · ${d7 > 0 ? '+' : d7 < 0 ? '−' : ''}${Math.abs(d7)} кг за неделю` : ''} · точки — ваши взвешивания`;
+  }
   const days = []; for (let i = 13; i >= 0; i--) { const k = shiftDay(today(), -i); days.push({ x: ts(k), y: sumMeals(k).kcal }); }
   chart($('#c2'), days, { bars: true, zero: true, line: goalFor(today()).kcal });
   if (statSel.ex) {
