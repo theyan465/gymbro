@@ -268,33 +268,53 @@ let addType = null, foodChoose = null;
 const chooseFood = f => foodChoose ? foodChoose(f) : addMealSheet(f);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
-  const mealRow = m => `<div class="row ${isNew(m.id)}"><div class="main">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
+  const mealRow = m => `<div class="row pick ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
   const groups = [...MT.map(([k, n]) => [k, n, meals.filter(m => m.type === k)]), ['', 'Без категории', meals.filter(m => !m.type)]].filter(([k, , l]) => k || l.length);
   $('#view').innerHTML = `
     <div class="toprow"><button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>${streakChip('nutr')}</div>
     ${ringCard(t, g)}
-    <div class="actions">
-      <button class="btn" id="addFood">${ic('plus')}Добавить</button>
-      <button class="btn ghost" id="scan">${ic('scan')}Штрихкод</button>
-      <button class="btn ghost" id="ocr">${ic('file')}Этикетка</button>
-    </div>
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
     ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
     <div class="card"><h2>Приёмы пищи</h2>
-      ${groups.map(([k, n, list]) => `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}</span>${k ? `<button class="btn sm ghost icon" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div>`).join('')}
+      ${groups.map(([k, n, list]) => `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}</span>${k ? `<button class="btn sm ghost addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}Добавить</button>` : ''}</div>${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div>`).join('')}
     </div>`;
   $('#dt').onclick = () => {
     const want = !dt.train;
     if (want === autoTrain(day)) delete S.dayType[day]; else S.dayType[day] = want;
     save(); render();
   };
-  $('#addFood').onclick = () => { addType = null; pickFood(); };
   document.querySelectorAll('[data-addto]').forEach(b => b.onclick = () => { addType = b.dataset.addto; pickFood(); });
-  $('#scan').onclick = () => scanBarcode();
-  $('#ocr').onclick = () => ocrLabel();
   $('#copy').onclick = () => copyMealsSheet();
   if ($('#copytoday')) $('#copytoday').onclick = () => copyMealsSheet({ target: today(), src: day });
-  document.querySelectorAll('[data-delmeal]').forEach(b => b.onclick = () => { S.meals = S.meals.filter(m => m.id !== b.dataset.delmeal); save(); render(); });
+  document.querySelectorAll('[data-delmeal]').forEach(b => b.onclick = e => { e.stopPropagation(); S.meals = S.meals.filter(m => m.id !== b.dataset.delmeal); save(); render(); });
+  document.querySelectorAll('[data-editmeal]').forEach(r => r.onclick = () => editMealSheet(S.meals.find(m => m.id === r.dataset.editmeal)));
+}
+
+// edit an already logged meal: name, meal, grams (macros follow the grams until edited by hand), macros
+function editMealSheet(m) {
+  if (!m) return;
+  let type = m.type || '', touched = false;
+  const base = m.g > 0 ? { kcal: m.kcal / m.g, p: m.p / m.g, f: m.f / m.g, c: m.c / m.g } : null;
+  sheet(`<h2 class="sh">Изменить запись</h2>
+    <label style="margin-top:0">Название</label><input id="en" value="${esc(m.name)}" maxlength="120" autocomplete="off">
+    <label>Приём пищи</label><div class="chips">${[...MT, ['', 'Без категории']].map(([k, n]) => `<button class="chip ${k === type ? 'on' : ''}" data-et="${k}">${n}</button>`).join('')}</div>
+    <label>Граммы</label><input id="eg" inputmode="decimal" value="${m.g}">
+    <div class="grid2"><div><label>Ккал</label><input id="ek" inputmode="decimal" value="${Math.round(m.kcal)}"></div><div><label>Белки, г</label><input id="ep" inputmode="decimal" value="${r1(m.p)}"></div>
+    <div><label>Жиры, г</label><input id="ef" inputmode="decimal" value="${r1(m.f)}"></div><div><label>Углеводы, г</label><input id="ec" inputmode="decimal" value="${r1(m.c)}"></div></div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="eok">Сохранить</button><button class="btn ghost danger" id="edel">Удалить запись</button></div>`, p => {
+    p.querySelectorAll('[data-et]').forEach(b => b.onclick = () => { type = b.dataset.et; p.querySelectorAll('[data-et]').forEach(x => x.classList.toggle('on', x === b)); });
+    ['#ek', '#ep', '#ef', '#ec'].forEach(id => { $(id).oninput = () => { touched = true; }; });
+    $('#eg').oninput = () => {
+      const g = num($('#eg').value); if (!base || touched || !(g > 0)) return;
+      $('#ek').value = Math.round(base.kcal * g); $('#ep').value = r1(base.p * g); $('#ef').value = r1(base.f * g); $('#ec').value = r1(base.c * g);
+    };
+    $('#eok').onclick = () => {
+      const name = $('#en').value.trim(); if (!name) return $('#en').focus();
+      Object.assign(m, { name, type, g: num($('#eg').value), kcal: num($('#ek').value), p: num($('#ep').value), f: num($('#ef').value), c: num($('#ec').value) });
+      save(); okBtn($('#eok'), () => { closeSheet(); render(); }, 'Сохранено');
+    };
+    $('#edel').onclick = () => { S.meals = S.meals.filter(x => x.id !== m.id); save(); closeSheet(); render(); };
+  });
 }
 
 // copy meals between days (also: copy a past day into today)
@@ -333,7 +353,7 @@ function copyMealsSheet(opts = {}) {
 
 function pickFood(opts = {}) {
   foodChoose = opts.onPick || null;
-  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn sm ghost">Выбрать</button></div>`;
+  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
   const draw = q => {
     q = q.trim().toLowerCase();
     let html;
@@ -345,11 +365,15 @@ function pickFood(opts = {}) {
     $('#flist').innerHTML = html || '<div class="empty">Нет продуктов. Создайте новый или отсканируйте.</div>';
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = () => chooseFood(S.foods.find(f => f.id === r.dataset.id)));
   };
-  sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : 'Продукт'}</h2><input id="q" placeholder="Поиск..." autocomplete="off"><div id="flist" style="margin:8px 0"></div><div id="slist"></div>
-    <div class="btns" style="margin-top:8px"><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>`, () => {
+  const mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
+  sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2><input id="q" placeholder="Поиск..." autocomplete="off"><div id="flist" style="margin:8px 0"></div><div id="slist"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button>`}</div>
+    ${opts.onPick ? '' : `<div class="btns" style="margin-top:8px"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn ghost" id="quick">Быстро: только ккал</button></div>`}`, () => {
     draw(''); $('#q').oninput = e => { draw(e.target.value); searchShared(e.target.value); };
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = () => foodForm({ name: 'Быстрая запись', quick: true });
+    if ($('#pscan')) $('#pscan').onclick = () => scanBarcode();
+    if ($('#pocr')) $('#pocr').onclick = () => ocrLabel();
     if ($('#dish')) $('#dish').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
   });
 }
@@ -406,20 +430,24 @@ function dishEditor(draft) {
 const dishDraft = food => ({ id: food.id, name: food.name, items: food.dish.items.map(i => ({ ...i })), cooked: food.dish.cooked || '' });
 
 function foodForm(pre) {
-  const v = k => pre[k] ?? '';
-  sheet(`<h2 class="sh">${pre.quick ? 'Быстрая запись' : 'Новый продукт'} <small class="dim">(на 100 г)</small></h2>
+  let mode = pre.mode || '100';
+  const v = k => pre[k] ?? '', edit = !!pre.isEdit;
+  sheet(`<h2 class="sh">${pre.quick ? 'Быстрая запись' : edit ? 'Изменить продукт' : 'Новый продукт'}</h2>
     ${pre.note ? `<div class="sub dim" style="margin-bottom:4px">${esc(pre.note)}</div>` : ''}
     <label>Название</label><input id="fn" value="${esc(pre.name || '')}" placeholder="Например: Йогурт Danone">
+    ${pre.quick ? '' : `<label>Значения указаны</label><div class="seg" id="fbas"><button type="button" data-bas="100" class="${mode === '100' ? 'on' : ''}">На 100 г</button><button type="button" data-bas="serv" class="${mode === 'serv' ? 'on' : ''}">На порцию</button></div>
+    <label id="fsvl">Размер порции, г</label><input id="fsv" inputmode="decimal" value="${v('serving')}" placeholder="необязательно">`}
     <div class="grid2"><div><label>Ккал</label><input id="fk" inputmode="decimal" value="${v('kcal')}"></div><div><label>Белки, г</label><input id="fp" inputmode="decimal" value="${v('p')}"></div>
     <div><label>Жиры, г</label><input id="ff" inputmode="decimal" value="${v('f')}"></div><div><label>Углеводы, г</label><input id="fc" inputmode="decimal" value="${v('c')}"></div></div>
     <div id="fchk" class="sub dim" style="margin-top:6px"></div>
     ${pre.quick ? '' : `<label>Штрихкод</label><div class="bcrow"><input id="fbc" inputmode="numeric" value="${esc(pre.barcode || '')}" placeholder="необязательно"><button class="btn ghost sm" id="fscan">${ic('scan')}Скан</button></div>
     <button class="btn ghost sm" id="flabel" style="margin-top:8px">${ic('file')}Заполнить по фото этикетки</button>`}
-    ${sb && user && !pre.quick ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" ${pre.barcode ? 'checked' : ''}> Добавить в общую базу</label>` : ''}
+    ${sb && user && !pre.quick && !edit ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" ${pre.barcode ? 'checked' : ''}> Добавить в общую базу</label>` : ''}
     ${pre.raw ? `<details class="raw"><summary>Распознанный текст</summary><pre>${esc(pre.raw)}</pre></details>` : ''}
-    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить и выбрать</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
+    <div class="btns" style="margin-top:14px"><button class="btn" id="ok">${edit ? 'Сохранить' : 'Сохранить и выбрать'}</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
     $('#cancel').onclick = closeSheet;
-    const cur = () => ({ ...pre, note: undefined, name: $('#fn').value, kcal: $('#fk').value, p: $('#fp').value, f: $('#ff').value, c: $('#fc').value, barcode: $('#fbc') ? $('#fbc').value.trim() : pre.barcode });
+    const sv = () => $('#fsv') ? num($('#fsv').value) : 0;
+    const cur = () => ({ ...pre, note: undefined, mode, serving: $('#fsv') ? $('#fsv').value : pre.serving, name: $('#fn').value, kcal: $('#fk').value, p: $('#fp').value, f: $('#ff').value, c: $('#fc').value, barcode: $('#fbc') ? $('#fbc').value.trim() : pre.barcode });
     const check = () => {
       const k = num($('#fk').value), p = num($('#fp').value), f = num($('#ff').value), c = num($('#fc').value), calc = Math.round(4 * p + 4 * c + 9 * f), el = $('#fchk');
       if (!(p || f || c)) { el.textContent = ''; return; }
@@ -428,13 +456,31 @@ function foodForm(pre) {
       el.textContent = `По БЖУ: ≈ ${calc} ккал` + (bad ? ' — не сходится с введёнными, проверьте цифры' : '') + (!k ? ' (ккал подставятся сами)' : '');
     };
     ['#fk', '#fp', '#ff', '#fc'].forEach(id => { $(id).oninput = check; }); check();
+    // switching the basis keeps the numbers equivalent when the serving size is known
+    document.querySelectorAll('#fbas [data-bas]').forEach(b => b.onclick = () => {
+      const to = b.dataset.bas; if (to === mode) return;
+      const g = sv(), k = g > 0 ? (to === 'serv' ? g / 100 : 100 / g) : 0;
+      if (k) [['#fk', 0], ['#fp', 1], ['#ff', 1], ['#fc', 1]].forEach(([id, d]) => { const x = $(id).value; if (x !== '') { const y = num(x) * k; $(id).value = d ? r1(y) : Math.round(y); } });
+      mode = to; document.querySelectorAll('#fbas [data-bas]').forEach(x => x.classList.toggle('on', x === b)); check();
+    });
     if ($('#fscan')) $('#fscan').onclick = () => { const snap = cur(); scanBarcode(code => foodForm({ ...snap, barcode: code })); };
     if ($('#flabel')) $('#flabel').onclick = () => ocrLabel(cur());
     $('#ok').onclick = () => {
       const name = $('#fn').value.trim(); if (!name) { $('#fn').focus(); return; }
-      const p = num($('#fp').value), f = num($('#ff').value), c = num($('#fc').value);
-      const food = { id: uid(), name, kcal: num($('#fk').value) || Math.round(4 * p + 4 * c + 9 * f), p, f, c, barcode: $('#fbc') ? $('#fbc').value.trim() : (pre.barcode || '') };
-      S.foods.push(food); save();
+      let p = num($('#fp').value), f = num($('#ff').value), c = num($('#fc').value), k = num($('#fk').value) || Math.round(4 * p + 4 * c + 9 * f);
+      const g = sv();
+      if (!pre.quick && mode === 'serv') {
+        if (!(g > 0)) { toast('Укажите размер порции'); $('#fsv').focus(); return; }
+        const m = 100 / g; k = Math.round(k * m); p = r1(p * m); f = r1(f * m); c = r1(c * m);
+      }
+      const vals = { name, kcal: k, p, f, c, barcode: $('#fbc') ? $('#fbc').value.trim() : (pre.barcode || '') };
+      if (g > 0) vals.serving = g;
+      if (edit) {
+        const food = S.foods.find(x => x.id === pre.id); if (!food) return closeSheet();
+        Object.assign(food, vals); if (!(g > 0)) delete food.serving; save();
+        return okBtn($('#ok'), () => { closeSheet(); render(); }, 'Продукт сохранён');
+      }
+      const food = { id: uid(), ...vals }; S.foods.push(food); save();
       if ($('#fshare') && $('#fshare').checked) shareFood(food);
       okBtn($('#ok'), () => pre.onSave ? pre.onSave(food) : addMealSheet(food), 'Продукт сохранён');
     };
@@ -444,9 +490,11 @@ function foodForm(pre) {
 function addMealSheet(food) {
   const dish = food.dish, total = dish ? Math.round(dishTotals(dish.items ? { items: dish.items, cooked: dish.cooked } : dish).w) : 0;
   let type = addType || autoType();
+  const serv = food.serving > 0 ? food.serving : 0;
   sheet(`<h2 class="sh">${esc(food.name)}${dish ? '<span class="tag dishtag">блюдо</span>' : ''}</h2><div class="dim">${food.kcal} ккал · Б${food.p} Ж${food.f} У${food.c} /100г</div>
     <label>Приём пищи</label><div class="chips">${MT.map(([k, n]) => `<button class="chip ${k === type ? 'on' : ''}" data-mt="${k}">${n}</button>`).join('')}</div>
-    <label>Порция, г</label><input id="g" inputmode="decimal" value="${food.lastG || 100}">
+    ${serv ? `<label>Порции <small class="dim">1 порция = ${serv} г</small></label><div class="chips">${[0.5, 1, 1.5, 2, 3].map(n => `<button class="chip" data-sv="${n}">${n}</button>`).join('')}</div>` : ''}
+    <label>Порция, г</label><input id="g" inputmode="decimal" value="${food.lastG || serv || 100}">
     ${dish ? `<div class="chips" style="margin-top:8px">${[['Всё', 1], ['1/2', 1 / 2], ['1/3', 1 / 3], ['1/4', 1 / 4], ['1/6', 1 / 6]].map(([n, f]) => `<button class="chip" data-fr="${f}">${n}</button>`).join('')}</div><div class="sub dim" style="margin-top:6px">Всего в блюде: ${total} г</div>
     <button class="btn ghost sm" id="oneoff" style="margin-top:8px">${ic('edit')}Изменить состав на этот раз</button> <button class="btn ghost sm" id="editdish" style="margin-top:8px">${ic('list')}Изменить блюдо</button>` : ''}
     <div id="calc" class="dim" style="margin:10px 0"></div>
@@ -455,6 +503,9 @@ function addMealSheet(food) {
     upd(); $('#g').oninput = upd;
     p.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { type = b.dataset.mt; p.querySelectorAll('[data-mt]').forEach(x => x.classList.toggle('on', x === b)); });
     p.querySelectorAll('[data-fr]').forEach(b => b.onclick = () => { $('#g').value = Math.round(total * +b.dataset.fr); upd(); });
+    const marks = () => p.querySelectorAll('[data-sv]').forEach(x => x.classList.toggle('on', Math.abs(num($('#g').value) - serv * +x.dataset.sv) < 0.05));
+    p.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { $('#g').value = r1(serv * +b.dataset.sv); upd(); marks(); });
+    if (serv) { $('#g').addEventListener('input', marks); marks(); }
     if ($('#oneoff')) $('#oneoff').onclick = () => dishEditor({ ...dishDraft(food), id: undefined, oneOff: { type } });
     if ($('#editdish')) $('#editdish').onclick = () => dishEditor(dishDraft(food));
     $('#ok').onclick = () => {
@@ -645,10 +696,12 @@ function parseLabel(text) {
     return null;
   };
   const all = lines.join('\n'); let kcal = 0;
-  const km = all.match(/(\d+(?:\.\d+)?)\s*(?:kcal|ккал|ккa|kcai|kca1)/) || all.match(/(?:kcal|ккал)\D{0,6}(\d+(?:\.\d+)?)/);
+  const km = all.match(/(\d+(?:\.\d+)?)\s*(?:kcal|ккал|ккa|kcai|kca1)/) || all.match(/(?:kcal|ккал|calories?|energi\S*|energie|energía)\D{0,6}(\d+(?:\.\d+)?)/);
   if (km && parseFloat(km[1]) <= 950) kcal = parseFloat(km[1]);
   else { const kj = all.match(/(\d+(?:\.\d+)?)\s*(?:kj|кдж|k[jJ])/); if (kj) kcal = Math.round(parseFloat(kj[1]) / 4.184); }
+  const sm = all.match(/(?:serving size|serv\.? size|размер порции|порция|porcja|wielko\S*\s+porcji|portionsgr\S*|portion|ración|ración)\D{0,25}?(\d+(?:\.\d+)?)\s*(?:g|gr|gram\S*|г|грам\S*)\b/);
   return {
+    serving: sm ? parseFloat(sm[1]) : 0, per100: /(?:per|на|pro|par|por|na)\s*100\s*(?:g|г|ml|мл)|\b100\s*(?:g|г)\b/.test(all),
     kcal: Math.round(kcal),
     p: first(/белк\S*|protein\S*|eiwei\S*|prot[ée]ines?|prote[ií]nas?|białk\S*|білк\S*/),
     f: first(/жир\S*|fat\b|fett\b|lipides|grasas?|tłuszcz\S*/, SKIP_FAT),
@@ -666,7 +719,7 @@ function mergeLabels(list) {
     const score = (kcal ? Math.abs(4 * p + 4 * c + 9 * f - kcal) : 0) + moved * 3;
     if (!best || score < best.score) best = { p, f, c, score };
   }
-  const out = { kcal, p: best.p, f: best.f, c: best.c };
+  const out = { kcal, p: best.p, f: best.f, c: best.c, serving: list.map(x => x.serving).find(Boolean) || 0, per100: list.some(x => x.per100) };
   if (!out.kcal && (out.p || out.f || out.c)) out.kcal = Math.round(4 * out.p + 4 * out.c + 9 * out.f);
   return out;
 }
@@ -674,7 +727,7 @@ function ocrLabel(pre = {}) {
   const lang0 = localStorage.getItem('gymbro.ocrLang') || 'rus+eng';
   const langs = [['rus+eng', 'Русский + English'], ['eng', 'English'], ['eng+deu', 'English + Deutsch'], ['eng+fra', 'English + Français'], ['eng+spa', 'English + Español'], ['eng+pol', 'English + Polski'], ['eng+ukr', 'English + Українська'], ['eng+tur', 'English + Türkçe'], ['eng+ita', 'English + Italiano']];
   sheet(`<h2 class="sh">Этикетка КБЖУ</h2>
-    <div class="dim small">Таблица «на 100 г» должна занимать почти весь кадр: крупно, ровно, без бликов.</div>
+    <div class="dim small">Таблица пищевой ценности («на 100 г» или «на порцию») должна занимать почти весь кадр: крупно, ровно, без бликов.</div>
     ${photoPicker('op')}
     <label>Язык этикетки</label><select id="lang">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <div id="prog" hidden style="margin-top:14px"><div class="bar"><i id="pbar" style="width:4%"></i></div></div>
@@ -697,7 +750,7 @@ function ocrLabel(pre = {}) {
         } finally { await worker.terminate(); }
         const res = mergeLabels(texts.map(parseLabel));
         const keep = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { keep[k] = res[k] || pre[k] || ''; });
-        foodForm({ ...pre, ...keep, name: pre.name || '', note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.', raw: texts.join('\n———\n') });
+        foodForm({ ...pre, ...keep, serving: res.serving || pre.serving || '', mode: res.serving && !res.per100 ? 'serv' : (pre.mode || '100'), name: pre.name || '', note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.', raw: texts.join('\n———\n') });
       } catch (err) { msg.textContent = 'Не удалось распознать: ' + (err && err.message || err); busy = false; $('#sheet .panel').classList.remove('busy'); $('#prog').hidden = true; }
     });
   });
@@ -1105,9 +1158,9 @@ let statView = 'charts';
 const seg = () => `<div class="seg"><button class="${statView === 'charts' ? 'on' : ''}" data-sv="charts">Графики</button><button class="${statView === 'muscle' ? 'on' : ''}" data-sv="muscle">Мышцы</button><button class="${statView === 'body' ? 'on' : ''}" data-sv="body">Замеры</button></div>`;
 const bindSeg = () => document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { statView = b.dataset.sv; animate = true; render(); });
 function bodySheet(date) {
-  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = typeof date === 'string' ? date : today(), canPhoto = !!(sb && user);
+  const last = [...S.body].sort((a, b) => b.date.localeCompare(a.date))[0] || {}, d = typeof date === 'string' ? date : today(), canPhoto = !!(sb && user), cur = S.body.find(x => x.date === d) || {};
   let pend = [];
-  sheet(`<h2 class="sh">Замер · ${fmtDay(d)}</h2><div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}${k === 'weight' ? '' : ', см'}</label><input inputmode="decimal" data-m="${k}" placeholder="${last[k] || ''}"></div>`).join('')}</div>
+  sheet(`<h2 class="sh">Замер · ${fmtDay(d)}</h2><div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}${k === 'weight' ? '' : ', см'}</label><input inputmode="decimal" data-m="${k}" value="${cur[k] || ''}" placeholder="${last[k] || ''}"></div>`).join('')}</div>
     <label>Фото прогресса <small class="dim">— необязательно</small></label>
     ${canPhoto ? `${photoPicker('pp')}<div id="pthumbs" class="thumbs"></div>` : '<div class="dim small">Фото доступны после входа в аккаунт.</div>'}
     <div class="btns" style="margin-top:14px"><button class="btn" id="ok">Сохранить</button></div>`, p => {
@@ -1143,8 +1196,9 @@ function viewBody() {
   const meas = r => MEAS.filter(([k]) => r[k]).map(([k, n]) => (k === 'weight' ? '' : n + ' ') + r[k] + (k === 'weight' ? ' кг' : ' см')).join(' · ');
   $('#view').innerHTML = seg() + `<button class="btn full" id="addB">${ic('plus')}Замер и фото</button>
     ${photos.length ? `<div class="card"><h2>Фото прогресса <button class="btn sm ghost" id="pcmp">${ic('copy')}Сравнить</button></h2><div class="strip">${photos.map(x => `<button class="ph" data-ph="${x.path}"><span>${esc(fmtDay(x.date))}</span></button>`).join('')}</div></div>` : ''}
-    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${meas(r) || 'Только фото'}</div>${r.photos && r.photos.length ? `<div class="thumbs sm">${r.photos.map(p => `<button class="th" data-ph="${p}"></button>`).join('')}</div>` : ''}</div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
+    <div class="card"><h2>История</h2>${rows.length ? rows.map(r => `<div class="row pick" data-editb="${r.date}"><div class="main"><b>${fmtDay(r.date)}</b><div class="sub">${meas(r) || 'Только фото'}</div>${r.photos && r.photos.length ? `<div class="thumbs sm">${r.photos.map(p => `<button class="th" data-ph="${p}"></button>`).join('')}</div>` : ''}</div><button class="btn del" data-delb="${r.id}">${ic('x')}</button></div>`).join('') : '<div class="empty">Нет замеров</div>'}</div>`;
   bindSeg(); $('#addB').onclick = () => bodySheet();
+  document.querySelectorAll('[data-editb]').forEach(r => r.onclick = e => { if (!e.target.closest('[data-delb],[data-ph]')) bodySheet(r.dataset.editb); });
   document.querySelectorAll('[data-ph]').forEach(e => e.onclick = () => photoView(e.dataset.ph));
   if ($('#pcmp')) $('#pcmp').onclick = () => { if (photos.length < 2) return toast('Нужно хотя бы два фото'); photoView(photos[0].path, photos[photos.length - 1].path); };
   document.querySelectorAll('[data-delb]').forEach(b => b.onclick = () => {
@@ -1298,8 +1352,8 @@ function viewMore() {
     bindChips($('#tdays'));
     $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); okBtn($('#sg'), null, 'Дни сохранены', true); };
   } else if (moreSub === 'foods') {
-    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div>${f.dish ? `<button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button>` : ''}<button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
-    document.querySelectorAll('[data-editfood]').forEach(b => b.onclick = () => dishEditor(dishDraft(S.foods.find(f => f.id === b.dataset.editfood))));
+    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
+    document.querySelectorAll('[data-editfood]').forEach(b => b.onclick = () => { const f = S.foods.find(x => x.id === b.dataset.editfood); f.dish ? dishEditor(dishDraft(f)) : foodForm({ ...f, isEdit: true, mode: '100' }); });
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
   } else if ((moreSub === 'mycoach' || moreSub === 'coach') && typeof coachView === 'function') {
     coachView(moreSub); return;

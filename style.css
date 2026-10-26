@@ -396,3 +396,5 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .langrow button.on { color: var(--acc, #4ade80); border-color: var(--acc, #4ade80); }
 .mi.on b { color: var(--acc, #4ade80); }
 #sheet .mi[data-lang] { width: 100%; }
+.mgh .addto { margin-left: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.mgh .addto svg { width: 16px; height: 16px; }
