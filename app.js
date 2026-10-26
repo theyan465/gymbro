@@ -177,14 +177,15 @@ const streakChip = (kind, label) => { const n = streak(kind); return `<div class
 function ringCard(t, g) {
   const pct = (v, goal) => Math.min(100, goal ? v / goal * 100 : 0);
   const C = 2 * Math.PI * 52, over = t.kcal > g.kcal, off = C * (1 - pct(t.kcal, g.kcal) / 100);
-  const mac = (n, v, goal, c) => `<div class="mac"><div class="mh"><span>${n}</span><b>${Math.round(v)}<small> / ${goal} г</small></b></div><div class="bar"><i style="width:${pct(v, goal)}%;background:var(--${c})"></i></div></div>`;
-  return `<div class="card hero">
-      <div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+  // vertical column per macro: filled from the bottom, eaten amount + goal under it
+  const col = (n, v, goal, c) => `<div class="vcol"><span class="vl">${n}</span><div class="vbar"><i style="height:${Math.max(3, pct(v, goal))}%;background:var(--${c})"></i></div><b>${Math.round(v)}</b><small>/ ${goal} г</small></div>`;
+  return `<div class="card dsum2">
+    <div class="hrow"><div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
         <circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg ${over ? 'over' : ''}" cx="60" cy="60" r="52" style="--len:${C};stroke-dasharray:${C};stroke-dashoffset:${off}"/></svg>
-        <div class="ringtxt"><b>${Math.round(t.kcal)}</b><small>из ${g.kcal} ккал</small></div></div>
-      <div class="macs">${mac('Белки', t.p, g.p, 'p')}${mac('Жиры', t.f, g.f, 'f')}${mac('Углеводы', t.c, g.c, 'c')}
-        <div class="left">${over ? 'Превышено на ' + Math.round(t.kcal - g.kcal) : 'Осталось ' + Math.round(g.kcal - t.kcal)} ккал</div></div>
-    </div>`;
+        <div class="ringtxt"><b>${Math.round(t.kcal)}</b><small>ккал</small></div></div>
+      <div class="hk"><div><small>Съел</small><b>${Math.round(t.kcal)}</b></div><div><small>Цель</small><b>${g.kcal}</b></div><div class="${over ? 'bad' : ''}"><small>${over ? 'Превышено' : 'Осталось'}</small><b>${Math.abs(Math.round(g.kcal - t.kcal))}</b></div></div></div>
+    <div class="vcols">${col('Жиры', t.f, g.f, 'f')}${col('Углеводы', t.c, g.c, 'c')}${col('Белки', t.p, g.p, 'p')}</div>
+  </div>`;
 }
 const goTab = (t, d) => { tab = t; if (d) day = d; animate = true; window.scrollTo(0, 0); render(); };
 
@@ -278,7 +279,7 @@ const foldSet = () => { try { return new Set(JSON.parse(localStorage.getItem('gy
 const folded = k => foldSet().has(k);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
-  const mealRow = m => `<div class="row pick mrow ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main"><div class="mn">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}</div><div class="msub">${m.g} г · <span class="mp">Б${r1(m.p)}</span> <span class="mf">Ж${r1(m.f)}</span> <span class="mc2">У${r1(m.c)}</span></div></div><div class="mk"><b>${Math.round(m.kcal)}</b><small>ккал</small></div><button class="btn del" data-delmeal="${m.id}" aria-label="Удалить">${ic('x')}</button></div>`;
+  const mealRow = m => `<div class="row pick mrow ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main"><div class="mn">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}</div><div class="msub">${m.g} г · <span class="mf">Ж${r1(m.f)}</span> <span class="mc2">У${r1(m.c)}</span> <span class="mp">Б${r1(m.p)}</span></div></div><div class="mk"><b>${Math.round(m.kcal)}</b><small>ккал</small></div><button class="btn del" data-delmeal="${m.id}" aria-label="Удалить">${ic('x')}</button></div>`;
   const groups = [...MT.map(([k, n]) => [k, n, meals.filter(m => m.type === k)]), ['', 'Без категории', meals.filter(m => !m.type)]].filter(([k, , l]) => k || l.length);
   $('#view').innerHTML = `
     <div class="toprow"><button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>${streakChip('nutr')}</div>
@@ -286,7 +287,7 @@ function viewFood() {
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
     ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
     <div class="sect">Приёмы пищи</div>
-    ${groups.map(([k, n, list]) => { const sum = f => r1(list.reduce((a, m) => a + m[f], 0)); return `<div class="mcard mt-${k || 'x'} ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><div class="mht"><b>${n}</b>${list.length ? `<span class="mkc"><em>${Math.round(list.reduce((a, m) => a + m.kcal, 0))}</em> ккал<span class="mcnt"> · ${list.length}</span></span>` : ''}</div>${k ? `<button class="addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.length ? `<div class="mgm"><span class="mc p">Б${sum('p')}</span><span class="mc f">Ж${sum('f')}</span><span class="mc c">У${sum('c')}</span></div>` : ''}<div class="mgbody">${list.map(mealRow).join('')}</div></div>`; }).join('')}
+    ${groups.map(([k, n, list]) => { const sum = f => r1(list.reduce((a, m) => a + m[f], 0)); return `<div class="mcard mt-${k || 'x'} ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><div class="mht"><b>${n}</b>${list.length ? `<span class="mkc"><em>${Math.round(list.reduce((a, m) => a + m.kcal, 0))}</em> ккал<span class="mcnt"> · ${list.length}</span></span>` : ''}</div>${k ? `<button class="addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.length ? `<div class="mgm"><span class="mc f">Ж${sum('f')}</span><span class="mc c">У${sum('c')}</span><span class="mc p">Б${sum('p')}</span></div>` : ''}<div class="mgbody">${list.map(mealRow).join('')}</div></div>`; }).join('')}
     `;
   $('#dt').onclick = () => {
     const want = !dt.train;
@@ -369,7 +370,7 @@ function pickFood(opts = {}) {
   foodChoose = opts.onPick || null;
   const cloud = !!(sb && user), mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
   let pt = 'mine', shared = [], shT = null, shSeq = 0;
-  const sub = f => `${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
+  const sub = f => `${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
   const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
   const srow = f => { const mine = !!findMine(f); return `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div>${mine ? `<span class="tag train">${ic('check')}В моих</span>` : `<button class="btn sm ghost" data-sadd="${f.id}">${ic('plus')}В мои</button>`}</div>`; };
   const draw = q => {
@@ -444,7 +445,7 @@ function dishEditor(draft) {
     const upd = () => {
       sync(); const t = dishTotals(draft);
       draft.items.forEach((it, i) => { const el = p.querySelector(`[data-sub="${i}"]`); if (el) el.textContent = `${Math.round(it.kcal * it.g / 100)} ккал`; });
-      $('#dsum').innerHTML = draft.items.length ? `<div><b>${Math.round(t.w)} г</b> · ${Math.round(t.kcal)} ккал · Б${r1(t.p)} Ж${r1(t.f)} У${r1(t.c)}</div><div class="dim small">На 100 г: ${Math.round(t.kcal * 100 / t.w)} ккал · Б${r1(t.p * 100 / t.w)} Ж${r1(t.f * 100 / t.w)} У${r1(t.c * 100 / t.w)}</div>` : '';
+      $('#dsum').innerHTML = draft.items.length ? `<div><b>${Math.round(t.w)} г</b> · ${Math.round(t.kcal)} ккал · Ж${r1(t.f)} У${r1(t.c)} Б${r1(t.p)}</div><div class="dim small">На 100 г: ${Math.round(t.kcal * 100 / t.w)} ккал · Ж${r1(t.f * 100 / t.w)} У${r1(t.c * 100 / t.w)} Б${r1(t.p * 100 / t.w)}</div>` : '';
     };
     p.querySelectorAll('.dg').forEach(i => i.oninput = () => { draft.items[+i.dataset.g].g = num(i.value); upd(); });
     $('#dcook').oninput = upd;
@@ -530,7 +531,7 @@ function addMealSheet(food) {
   const dish = food.dish, total = dish ? Math.round(dishTotals(dish.items ? { items: dish.items, cooked: dish.cooked } : dish).w) : 0;
   let type = addType || autoType();
   const serv = food.serving > 0 ? food.serving : 0;
-  sheet(`<h2 class="sh">${esc(food.name)}${dish ? '<span class="tag dishtag">блюдо</span>' : ''}</h2><div class="dim">${food.kcal} ккал · Б${food.p} Ж${food.f} У${food.c} /100г</div>
+  sheet(`<h2 class="sh">${esc(food.name)}${dish ? '<span class="tag dishtag">блюдо</span>' : ''}</h2><div class="dim">${food.kcal} ккал · Ж${food.f} У${food.c} Б${food.p} /100г</div>
     <label>Приём пищи</label><div class="chips">${MT.map(([k, n]) => `<button class="chip ${k === type ? 'on' : ''}" data-mt="${k}">${n}</button>`).join('')}</div>
     ${serv ? `<label>Порции <small class="dim">1 порция = ${serv} г</small></label><div class="chips">${[0.5, 1, 1.5, 2, 3].map(n => `<button class="chip" data-sv="${n}">${n}</button>`).join('')}</div>` : ''}
     <label>Порция, г</label><input id="g" inputmode="decimal" value="${food.lastG || serv || 100}">
@@ -538,7 +539,7 @@ function addMealSheet(food) {
     <button class="btn ghost sm" id="oneoff" style="margin-top:8px">${ic('edit')}Изменить состав на этот раз</button> <button class="btn ghost sm" id="editdish" style="margin-top:8px">${ic('list')}Изменить блюдо</button>` : ''}
     <div id="calc" class="dim" style="margin:10px 0"></div>
     <div class="btns"><button class="btn" id="ok">Добавить</button></div>`, p => {
-    const upd = () => { const x = per(food, num($('#g').value)); $('#calc').textContent = `${Math.round(x.kcal)} ккал · Б${r1(x.p)} Ж${r1(x.f)} У${r1(x.c)}`; };
+    const upd = () => { const x = per(food, num($('#g').value)); $('#calc').textContent = `${Math.round(x.kcal)} ккал · Ж${r1(x.f)} У${r1(x.c)} Б${r1(x.p)}`; };
     upd(); $('#g').oninput = upd;
     p.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { type = b.dataset.mt; p.querySelectorAll('[data-mt]').forEach(x => x.classList.toggle('on', x === b)); });
     p.querySelectorAll('[data-fr]').forEach(b => b.onclick = () => { $('#g').value = Math.round(total * +b.dataset.fr); upd(); });
@@ -1411,7 +1412,7 @@ function viewMore() {
     bindChips($('#tdays'));
     $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); okBtn($('#sg'), null, 'Дни сохранены', true); };
   } else if (moreSub === 'foods') {
-    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div>${sb && user ? `<button class="btn del" data-sharefood="${f.id}" aria-label="В общую базу">${ic('db')}</button>` : ''}<button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
+    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p} /100г</div></div>${sb && user ? `<button class="btn del" data-sharefood="${f.id}" aria-label="В общую базу">${ic('db')}</button>` : ''}<button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
     document.querySelectorAll('[data-editfood]').forEach(b => b.onclick = () => { const f = S.foods.find(x => x.id === b.dataset.editfood); f.dish ? dishEditor(dishDraft(f)) : foodForm({ ...f, isEdit: true, mode: '100' }); });
     document.querySelectorAll('[data-sharefood]').forEach(b => b.onclick = async () => { const ok = await shareFood(S.foods.find(f => f.id === b.dataset.sharefood)); toast(ok ? 'Добавлено в общую базу' : 'Не удалось: нет доступа к общей базе'); });
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
@@ -1693,7 +1694,7 @@ async function adminBase() {
     q = q.trim().toLowerCase();
     const fl = foods.filter(f => nameHas(f.name, q)), el = exs.filter(e => nameHas(e.name, q));
     $('#alist').innerHTML = `<div class="dim" style="margin:6px 0 2px">Продукты (${fl.length})</div>` +
-      (fl.map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-df="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>') +
+      (fl.map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p}</div></div><button class="btn del" data-df="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>') +
       `<div class="dim" style="margin:10px 0 2px">Упражнения (${el.length})</div>` +
       (el.map(e => `<div class="row"><div class="main">${esc(e.name)}</div><button class="btn del" data-de="${e.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>');
     const del = (table, list, id) => async () => {
