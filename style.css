@@ -524,3 +524,8 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .mcard .mr .k { font-size: 14.5px; }
 .mcard .mr .cf, .mcard .mr .cc, .mcard .mr .cp { font-size: 12.5px; }
 .mcard .mr .mrn small .tag { margin-left: 8px; padding: 1px 7px; font-size: 10.5px; vertical-align: 1px; }
+
+/* no page zoom: pinch, double-tap and focus zoom */
+html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, .row, .card, .chip { touch-action: manipulation; }
+input, select, textarea { font-size: 16px !important; }
