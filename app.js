@@ -334,8 +334,8 @@ function editMealSheet(m) {
     <label style="margin-top:0">Название</label><input id="en" value="${esc(m.name)}" maxlength="120" autocomplete="off">
     <label>Приём пищи</label><div class="chips">${[...MT, ['', 'Без категории']].map(([k, n]) => `<button class="chip ${k === type ? 'on' : ''}" data-et="${k}">${n}</button>`).join('')}</div>
     <label>Граммы</label><input id="eg" inputmode="decimal" value="${m.g}">
-    <div class="grid2"><div><label>Ккал</label><input id="ek" inputmode="decimal" value="${Math.round(m.kcal)}"></div><div><label>Белки, г</label><input id="ep" inputmode="decimal" value="${r1(m.p)}"></div>
-    <div><label>Жиры, г</label><input id="ef" inputmode="decimal" value="${r1(m.f)}"></div><div><label>Углеводы, г</label><input id="ec" inputmode="decimal" value="${r1(m.c)}"></div></div>
+    <div class="grid2 col1"><div><label>Ккал</label><input id="ek" inputmode="decimal" value="${Math.round(m.kcal)}"></div><div><label>Жиры, г</label><input id="ef" inputmode="decimal" value="${r1(m.f)}"></div>
+    <div><label>Углеводы, г</label><input id="ec" inputmode="decimal" value="${r1(m.c)}"></div><div><label>Белки, г</label><input id="ep" inputmode="decimal" value="${r1(m.p)}"></div></div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="eok">Сохранить</button><button class="btn ghost danger" id="edel">Удалить запись</button></div>`, p => {
     p.querySelectorAll('[data-et]').forEach(b => b.onclick = () => { type = b.dataset.et; p.querySelectorAll('[data-et]').forEach(x => x.classList.toggle('on', x === b)); });
     ['#ek', '#ep', '#ef', '#ec'].forEach(id => { $(id).oninput = () => { touched = true; }; });
@@ -497,8 +497,8 @@ function foodForm(pre) {
     <label>Название</label><input id="fn" value="${esc(pre.name || '')}" placeholder="Например: Йогурт Danone">
     ${pre.quick ? '' : `<label>Значения указаны</label><div class="seg" id="fbas"><button type="button" data-bas="100" class="${mode === '100' ? 'on' : ''}">На 100 г</button><button type="button" data-bas="serv" class="${mode === 'serv' ? 'on' : ''}">На порцию</button></div>
     <label id="fsvl">Размер порции, г</label><input id="fsv" inputmode="decimal" value="${v('serving')}" placeholder="необязательно">`}
-    <div class="grid2"><div><label>Ккал</label><input id="fk" inputmode="decimal" value="${v('kcal')}"></div><div><label>Белки, г</label><input id="fp" inputmode="decimal" value="${v('p')}"></div>
-    <div><label>Жиры, г</label><input id="ff" inputmode="decimal" value="${v('f')}"></div><div><label>Углеводы, г</label><input id="fc" inputmode="decimal" value="${v('c')}"></div></div>
+    <div class="grid2 col1"><div><label>Ккал</label><input id="fk" inputmode="decimal" value="${v('kcal')}"></div><div><label>Жиры, г</label><input id="ff" inputmode="decimal" value="${v('f')}"></div>
+    <div><label>Углеводы, г</label><input id="fc" inputmode="decimal" value="${v('c')}"></div><div><label>Белки, г</label><input id="fp" inputmode="decimal" value="${v('p')}"></div></div>
     <div id="fchk" class="sub dim" style="margin-top:6px"></div>
     ${pre.quick ? '' : `<label>Штрихкод</label><div class="bcrow"><input id="fbc" inputmode="numeric" value="${esc(pre.barcode || '')}" placeholder="необязательно"><button class="btn ghost sm" id="fscan">${ic('scan')}Скан</button></div>
     <button class="btn ghost sm" id="flabel" style="margin-top:8px">${ic('file')}Заполнить по фото этикетки</button>`}
@@ -1439,8 +1439,8 @@ function viewMore() {
   const back = `<button class="back" id="back">${ic('left')}Аккаунт</button>`;
   const nav = () => { animate = true; window.scrollTo(0, 0); render(); };
   const flash = (el, text) => { const t = el.textContent; el.textContent = text; setTimeout(() => { el.textContent = t; }, 1200); };
-  const goalFields = (p, v) => `<div class="grid2"><div><label>Ккал</label><input inputmode="numeric" id="${p}k" value="${v.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" id="${p}p" value="${v.p}"></div>
-    <div><label>Жиры, г</label><input inputmode="numeric" id="${p}f" value="${v.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" id="${p}c" value="${v.c}"></div></div>`;
+  const goalFields = (p, v) => `<div class="grid2 col1"><div><label>Ккал</label><input inputmode="numeric" id="${p}k" value="${v.kcal}"></div><div><label>Жиры, г</label><input inputmode="numeric" id="${p}f" value="${v.f}"></div>
+    <div><label>Углеводы, г</label><input inputmode="numeric" id="${p}c" value="${v.c}"></div><div><label>Белки, г</label><input inputmode="numeric" id="${p}p" value="${v.p}"></div></div>`;
 
   if (!moreSub) {
     $('#view').innerHTML = `<div class="card profile"><div class="avatar">${esc((cloud ? user.email : 'G')[0].toUpperCase())}</div>
