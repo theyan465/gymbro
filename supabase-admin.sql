@@ -37,3 +37,18 @@ drop policy if exists "ex admin delete" on public.shared_exercises;
 create policy "food admin delete" on public.shared_foods for delete to authenticated using (public.is_admin());
 create policy "food admin update" on public.shared_foods for update to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy "ex admin delete" on public.shared_exercises for delete to authenticated using (public.is_admin());
+
+-- List of all registered accounts for admins (safe to re-run)
+create or replace function public.admin_users() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'not allowed'; end if;
+  return coalesce((select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+    select u.id, u.email, u.created_at, u.last_sign_in_at, d.updated_at as data_updated,
+           (exists (select 1 from public.admins a where a.user_id = u.id)) as is_admin,
+           case when jsonb_typeof(d.data->'meals') = 'array' then jsonb_array_length(d.data->'meals') else 0 end as meals,
+           case when jsonb_typeof(d.data->'workouts') = 'array' then jsonb_array_length(d.data->'workouts') else 0 end as workouts
+    from auth.users u left join public.user_data d on d.user_id = u.id) x), '[]'::jsonb);
+end $$;
+revoke all on function public.admin_users() from public, anon;
+grant execute on function public.admin_users() to authenticated;
