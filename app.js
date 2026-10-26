@@ -10,6 +10,8 @@ const DEFAULTS = {
   reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
 const fresh = () => structuredClone(DEFAULTS);
+// search matches the stored (Russian) name and the name as shown in the current language
+const nameHas = (name, q) => { name = name.toLowerCase(); return name.includes(q) || tx(name).toLowerCase().includes(q); };
 let S;
 try { S = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { S = fresh(); }
 function migrateBody() {
@@ -32,14 +34,15 @@ const r1 = n => Math.round(n * 10) / 10;
 const dkey = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
 const today = () => dkey(new Date());
 const shiftDay = (k, n) => { const d = new Date(k + 'T12:00:00'); d.setDate(d.getDate() + n); return dkey(d); };
-const fmtDay = k => k === today() ? 'Сегодня' : new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
-const dayLabel = k => { const t = today(); return k === t ? 'Сегодня' : k === shiftDay(t, -1) ? 'Вчера' : k === shiftDay(t, 1) ? 'Завтра' : new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' }); };
-const longDay = k => new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+const fmtDay = k => k === today() ? 'Сегодня' : new Date(k + 'T12:00:00').toLocaleDateString(LOC, { weekday: 'short', day: 'numeric', month: 'short' });
+const dayLabel = k => { const t = today(); return k === t ? 'Сегодня' : k === shiftDay(t, -1) ? 'Вчера' : k === shiftDay(t, 1) ? 'Завтра' : new Date(k + 'T12:00:00').toLocaleDateString(LOC, { weekday: 'short', day: 'numeric', month: 'short' }); };
+const longDay = k => new Date(k + 'T12:00:00').toLocaleDateString(LOC, { weekday: 'long', day: 'numeric', month: 'long' });
 const e1rm = (w, r) => r <= 0 ? 0 : r === 1 ? w : w * (1 + r / 30); // Epley
 
 
 // ---------- icons ----------
 const ICONS = {
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
   utensils: '<path d="M3 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6a2 2 0 0 0 2 2h3zm0 0v7"/>',
   dumbbell: '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>',
   pill: '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7z"/><path d="m8.5 8.5 7 7"/>',
@@ -120,7 +123,7 @@ function chart(canvas, series, opts = {}) {
   canvas.width = W * dpr; canvas.height = H * dpr;
   const g = canvas.getContext('2d'); g.scale(dpr, dpr); g.clearRect(0, 0, W, H);
   const pts = series.filter(p => isFinite(p.y)), ex = (opts.extra || []).filter(p => isFinite(p.y));
-  if (pts.length < 1) { g.fillStyle = '#8b95a3'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText('Нет данных', W / 2, H / 2); return; }
+  if (pts.length < 1) { g.fillStyle = '#8b95a3'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText(tx('Нет данных'), W / 2, H / 2); return; }
   const L = 38, R = 8, T = 10, B = 20;
   let ys = pts.map(p => p.y).concat(ex.map(p => p.y)), lo = Math.min(...ys), hi = Math.max(...ys);
   if (opts.zero) { lo = 0; if (hi <= 0) hi = 1; }
@@ -132,7 +135,7 @@ function chart(canvas, series, opts = {}) {
   g.strokeStyle = '#2a313b'; g.fillStyle = '#8b95a3'; g.font = '11px sans-serif'; g.textAlign = 'right';
   for (let i = 0; i <= 3; i++) { const v = lo + (hi - lo) * i / 3, y = Y(v); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText(Math.round(v * 10) / 10, L - 4, y + 4); }
   g.textAlign = 'center';
-  const fx = x => new Date(x).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  const fx = x => new Date(x).toLocaleDateString(LOC, { day: 'numeric', month: 'short' });
   g.fillText(fx(x0), L + 14, H - 5); if (x1 !== x0) g.fillText(fx(x1), W - R - 14, H - 5);
   const col = opts.color || '#4ade80';
   if (opts.bars) {
@@ -193,7 +196,7 @@ function viewHome() {
   $('#view').innerHTML = `
     <div class="card hero3">
       <div class="flamebig ${all ? '' : 'off'}">${ic('flame')}</div>
-      <div class="main"><div class="big">${all}<small> ${all === 1 ? 'день' : all >= 2 && all <= 4 ? 'дня' : 'дней'} подряд</small></div>
+      <div class="main"><div class="big">${all}<small> ${plural(all, ['день', 'дня', 'дней'])} подряд</small></div>
         <div class="dim">${longDay(d)} · выполнено ${doneN} из ${app.length}</div></div>
     </div>
     ${typeof coachHomeCard === 'function' ? coachHomeCard() : ''}
@@ -224,7 +227,7 @@ const dayDots = k => ({
 function calendarSheet(ym) {
   const draw = ym => {
     const [Y, M] = ym.split('-').map(Number), lead = (new Date(Y, M - 1, 1).getDay() + 6) % 7, n = new Date(Y, M, 0).getDate(), tdy = today();
-    const title = new Date(Y, M - 1, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    const title = new Date(Y, M - 1, 1).toLocaleDateString(LOC, { month: 'long', year: 'numeric' });
     const cells = [];
     for (let i = 0; i < lead; i++) cells.push('<i class="calblank"></i>');
     for (let i = 1; i <= n; i++) {
@@ -338,7 +341,7 @@ function pickFood(opts = {}) {
       const recent = S.foods.filter(f => f.lastAt).sort((a, b) => b.lastAt - a.lastAt).slice(0, 6), ids = new Set(recent.map(f => f.id));
       const rest = S.foods.filter(f => !ids.has(f.id)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30);
       html = (recent.length ? `<div class="dim small" style="margin:4px 0 0">Недавние</div>${recent.map(row).join('')}` : '') + (rest.length ? `<div class="dim small" style="margin:8px 0 0">${recent.length ? 'Остальные' : 'Мои продукты'}</div>${rest.map(row).join('')}` : '');
-    } else html = S.foods.filter(f => f.name.toLowerCase().includes(q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30).map(row).join('');
+    } else html = S.foods.filter(f => nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30).map(row).join('');
     $('#flist').innerHTML = html || '<div class="empty">Нет продуктов. Создайте новый или отсканируйте.</div>';
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = () => chooseFood(S.foods.find(f => f.id === r.dataset.id)));
   };
@@ -710,7 +713,13 @@ function beep() {
   }
   if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 }
-const plural = (n, f) => { const a = Math.abs(n) % 100, b = a % 10; return a > 10 && a < 20 ? f[2] : b > 1 && b < 5 ? f[1] : b === 1 ? f[0] : f[2]; };
+// f holds the Russian forms (1 / 2-4 / 5+); the picked form is translated later, so en/pl only need the right index
+const plural = (n, f) => {
+  const a = Math.abs(n) % 100, b = a % 10, few = !(a > 10 && a < 20) && b > 1 && b < 5;
+  if (LANG === 'en') return f[Math.abs(n) === 1 ? 0 : 1];
+  if (LANG === 'pl') return f[Math.abs(n) === 1 ? 0 : few ? 1 : 2];
+  return a > 10 && a < 20 ? f[2] : few ? f[1] : b === 1 ? f[0] : f[2];
+};
 const fmtSec = n => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
 function startRest(sec) {
   if (!S.rest.on) return;
@@ -851,7 +860,7 @@ function addExercise(cb) {
     <div class="btns"><button class="btn ghost" id="cancel">Закрыть</button></div>`, () => {
     const draw = raw => {
       const q = raw.trim().toLowerCase();
-      const list = all.filter(n => n.toLowerCase().includes(q)).slice(0, 40);
+      const list = all.filter(n => nameHas(n, q)).slice(0, 40);
       const exact = all.some(n => n.toLowerCase() === q);
       $('#exl').innerHTML = (q && !exact ? `<div class="row pick" data-new="1"><div class="main">Создать «${esc(raw.trim())}»</div><span class="btn sm">${ic('plus')}</span></div>` : '') +
         list.map(n => `<div class="row pick" data-n="${esc(n)}"><div class="main">${esc(n)}</div><span class="btn sm ghost">${ic('plus')}</span></div>`).join('') +
@@ -959,7 +968,7 @@ function viewVit() {
   };
   const pct30 = v => { let d = 0, t = 0, k = today(); for (let i = 0; i < 30; i++, k = shiftDay(k, -1)) { if (vitDue(v, k) && k <= today() && !(k === today() && !vitTaken(v, k))) { d++; if (vitTaken(v, k)) t++; } } return d ? Math.round(t / d * 100) : null; };
   const hist = S.vitamins.length ? `<div class="card"><h2>История · 14 дней</h2>
-      <div class="heat hd">${days.map(k => `<small class="${k === today() ? 'tdy' : ''}">${WD[wday(k)][0]}</small>`).join('')}</div>
+      <div class="heat hd">${days.map(k => `<small class="${k === today() ? 'tdy' : ''}" translate="no">${tx(WD[wday(k)])[0]}</small>`).join('')}</div>
       ${S.vitamins.map(v => { const p = pct30(v); return `<div class="hrow"><div class="hname"><span>${esc(v.name)}</span><small>${p === null ? '' : p + '% за 30 дн.'}</small></div><div class="heat">${days.map(k => cell(v, k)).join('')}</div></div>`; }).join('')}
       <div class="legend"><span><i class="cell ok"></i>принято</span><span><i class="cell miss"></i>пропущено</span><span><i class="cell none"></i>не по расписанию</span></div></div>` : '';
   $('#view').innerHTML = `
@@ -1184,7 +1193,7 @@ function viewMuscle() {
       <div class="mbars">${series.map((v, i) => `<i class="${i === series.length - 1 ? 'cur' : ''}" style="height:${Math.max(4, v / mx * 100)}%" title="${Math.round(v)}"></i>`).join('')}</div></div>`;
   }).join('');
   const unk = [...new Set(S.workouts.flatMap(w => w.exercises.map(e => e.name)))].filter(n => muscleOf(n) === 'other');
-  const wl = `${new Date(ws + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} – ${new Date(shiftDay(ws, 6) + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`;
+  const wl = `${new Date(ws + 'T12:00:00').toLocaleDateString(LOC, { day: 'numeric', month: 'short' })} – ${new Date(shiftDay(ws, 6) + 'T12:00:00').toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}`;
   $('#view').innerHTML = seg() + `
     <div class="card"><div class="calhead"><button class="btn sm ghost icon" data-mw="-1" aria-label="Прошлая неделя">${ic('left')}</button><b>${isNow ? 'Эта неделя' : wl}</b><button class="btn sm ghost icon" data-mw="1" aria-label="Следующая неделя">${ic('right')}</button></div>
       <div class="dim small" style="text-align:center;margin-top:-4px">${isNow ? wl : ''}</div>
@@ -1245,6 +1254,12 @@ function viewStats() {
 let moreSub = null;
 const dayNames = () => WD_ORDER.filter(d => S.trainDays.includes(d)).map(d => WD[d]).join(' ') || 'не выбраны';
 const mi = (id, icon, title, sub, cls = '') => `<button class="mi ${cls}" id="${id}"><span class="bd">${ic(icon)}</span><span class="tx"><b>${title}</b><small>${sub}</small></span>${ic('right', 'chev')}</button>`;
+function langSheet() {
+  const opts = [['auto', 'Auto · ' + LANG_NAMES[detectLang()], 'System language / Мова системи']].concat(Object.entries(LANG_NAMES).map(([k, n]) => [k, n, '']));
+  sheet(`<h2 class="sh">Язык / Language</h2>${opts.map(([k, n, d]) => `<button class="mi ${LANG_PREF === k ? 'on' : ''}" data-lang="${k}" translate="no"><span class="tx"><b>${esc(n)}</b>${d ? `<small>${esc(d)}</small>` : ''}</span>${LANG_PREF === k ? ic('check', 'chev') : ''}</button>`).join('')}`, p => {
+    p.querySelectorAll('[data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG_PREF) setLang(b.dataset.lang); else closeSheet(); });
+  });
+}
 function viewMore() {
   const cloud = !!(CFG.url && user);
   const back = `<button class="back" id="back">${ic('left')}Аккаунт</button>`;
@@ -1261,12 +1276,14 @@ function viewMore() {
         ${mi('m-days', 'calendar', 'Тренировочные дни', dayNames())}
         ${mi('m-foods', 'utensils', 'Мои продукты', S.foods.length + ' шт.')}
         ${typeof coachMenu === 'function' ? coachMenu() : ''}
-        ${mi('m-train', 'dumbbell', 'Тренировки', `Отдых ${S.rest.on ? S.rest.sec + ' с' : 'выкл.'} · гриф ${S.plates.bar} кг`)}
+        ${mi('m-train', 'dumbbell', 'Тренировки', `Отдых ${S.rest.on ? S.rest.sec + ' сек' : 'выкл.'} · гриф ${S.plates.bar} кг`)}
         ${mi('m-notify', 'bell', 'Уведомления', S.reminders.on ? 'Включены' : 'Выключены')}
+        ${mi('m-lang', 'globe', 'Язык / Language', LANG_PREF === 'auto' ? 'Auto · ' + LANG_NAMES[LANG] : LANG_NAMES[LANG])}
         ${mi('m-data', 'db', 'Данные и копия', cloud ? 'Синхронизация, экспорт, импорт' : 'Экспорт и импорт')}
         ${isAdmin ? mi('m-admin', 'crown', 'Администратор', 'Общая база, код доступа') : ''}
       </div>
       ${cloud ? `<div class="card menu">${mi('logout', 'logout', 'Выйти', 'Данные останутся в облаке', 'danger')}</div>` : ''}`;
+    if ($('#m-lang')) $('#m-lang').onclick = langSheet;
     [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['mycoach', 'm-mycoach'], ['coach', 'm-coach'], ['train', 'm-train'], ['notify', 'm-notify'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; if (typeof coachEnter === 'function') coachEnter(k); nav(); }; });
   } else if (moreSub === 'goals') {
     $('#view').innerHTML = back + `<div class="card"><h2><span class="hic">${ic('bolt')}Тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
@@ -1406,7 +1423,7 @@ async function push() {
   const { error } = await sb.from('user_data').upsert({ user_id: user.id, data: S, updated_at: new Date().toISOString() });
   if (error) return setStatus('Ошибка синхронизации: ' + error.message);
   setSync({ uid: user.id, at });
-  setStatus('Синхронизировано в ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+  setStatus('Синхронизировано в ' + new Date().toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' }));
 }
 async function pull() {
   if (!sb || !user) return;
@@ -1446,7 +1463,9 @@ function viewAuth() {
       ${up ? '<label>Код доступа</label><input id="ic" autocapitalize="none" autocomplete="off"><div class="dim small" style="margin-top:6px">Код выдаёт администратор приложения.</div>' : ''}
       <div id="autherr" class="sub warn" style="margin-top:8px"></div>
       <button class="btn full" id="${up ? 'signup' : 'login'}" style="margin:12px 0 0">${up ? 'Создать аккаунт' : 'Войти'}</button></div>
-    <div class="dim small" style="text-align:center">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>`;
+    <div class="dim small" style="text-align:center">Все данные хранятся в вашем аккаунте и доступны на любом устройстве.</div>
+    <div class="langrow" translate="no">${Object.entries(LANG_NAMES).map(([k, n]) => `<button class="${LANG === k ? 'on' : ''}" data-lang="${k}">${esc(n)}</button>`).join('')}</div>`;
+  document.querySelectorAll('.langrow [data-lang]').forEach(b => b.onclick = () => { if (b.dataset.lang !== LANG) setLang(b.dataset.lang); });
   document.querySelectorAll('[data-am]').forEach(b => b.onclick = () => {
     authDraft = { em: $('#em').value, pw: $('#pw').value }; authMode = b.dataset.am; animate = true; render();
   });
@@ -1546,7 +1565,7 @@ async function adminBase() {
   const foods = fx.data || [], exs = ex.data || [];
   const draw = q => {
     q = q.trim().toLowerCase();
-    const fl = foods.filter(f => f.name.toLowerCase().includes(q)), el = exs.filter(e => e.name.toLowerCase().includes(q));
+    const fl = foods.filter(f => nameHas(f.name, q)), el = exs.filter(e => nameHas(e.name, q));
     $('#alist').innerHTML = `<div class="dim" style="margin:6px 0 2px">Продукты (${fl.length})</div>` +
       (fl.map(f => `<div class="row"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c}</div></div><button class="btn del" data-df="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">—</div>') +
       `<div class="dim" style="margin:10px 0 2px">Упражнения (${el.length})</div>` +
