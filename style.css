@@ -538,3 +538,16 @@ input, select, textarea { font-size: 16px !important; }
 .mcard .mfold .cf { color: var(--f); } .mcard .mfold .cc { color: var(--c); } .mcard .mfold .cp { color: var(--p); }
 .mcard.folded .mkc { display: none; }
 .grid2.col1 { grid-template-columns: 1fr; gap: 0; }
+
+/* coach: menu with products */
+.mealbox { background: rgba(255,255,255,.03); border: 1px solid var(--line); border-radius: 16px; padding: 10px; margin-top: 10px; }
+.mealbox .mbh { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.mealbox .mbh select { flex: 1; }
+.mealbox textarea { margin-top: 8px; width: 100%; background: #0d1117; border: 1px solid var(--line); color: var(--txt); border-radius: 12px; padding: 10px; font: inherit; }
+.mealbox .dsum, #menutot { margin-top: 8px; font-size: 13.5px; color: var(--dim); } .mealbox .dsum b, #menutot b { color: var(--txt); }
+#menutot:empty, .mealbox .dsum:empty { display: none; }
+#menutot { background: color-mix(in srgb, var(--acc) 9%, transparent); border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent); border-radius: 14px; padding: 10px 12px; }
+.cmeal .mit { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+.cmeal .mit em { font-style: normal; color: var(--dim); font-size: 12.5px; white-space: nowrap; }
+.cmeal .mtt { margin-top: 4px; font-size: 12.5px; color: var(--dim); } .cmeal .mtt b { color: var(--txt); }
+.cmeal .mtx { margin-top: 4px; color: var(--dim); font-size: 13.5px; white-space: pre-wrap; }
