@@ -262,9 +262,15 @@ function coachChatPage() {
 }
 function connectSheet() {
   sheet(`<h2 class="sh">Подключить тренера</h2><div class="dim small">Введите код, который прислал тренер.</div>
-    <label>Код приглашения</label><input id="icode" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX" style="text-transform:uppercase;letter-spacing:2px;font-weight:600">
+    <label>Код приглашения</label><div class="bcrow"><input id="icode" autocomplete="off" autocapitalize="characters" placeholder="XXXXX-XXXXX" style="text-transform:uppercase;letter-spacing:2px;font-weight:600"><button class="btn ghost sm" id="ipaste" type="button">${ic('copy')}Вставить</button></div>
     <div id="cerr" class="sub warn" style="margin-top:6px"></div><div id="cstep"></div>
     <div class="btns" style="margin-top:12px"><button class="btn" id="cnext">Проверить код</button></div>`, () => {
+    const fill = t => { const c = findCode(t); if (c) { $('#icode').value = c; $('#cerr').textContent = ''; } return !!c; };
+    $('#ipaste').onclick = async () => {
+      let t = ''; try { t = await navigator.clipboard.readText(); } catch { t = prompt('Вставьте код или текст приглашения:') || ''; }
+      if (fill(t)) $('#cnext').click(); else toast('В буфере нет кода приглашения');
+    };
+    $('#icode').addEventListener('input', () => { if ($('#icode').value.length > 11) fill($('#icode').value); });   // a whole invitation text pasted by hand
     $('#cnext').onclick = async () => {
       const code = $('#icode').value.trim(); if (!code) return;
       $('#cerr').textContent = '';
@@ -333,19 +339,24 @@ function coachListView() {
   document.querySelectorAll('[data-cid]').forEach(e => e.onclick = () => coachOpenClient(e.dataset.cid));
   sb.from('coach_invites').select('*').is('used_by', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).then(({ data }) => {
     const box = $('#invlist'); if (!box) return; CO.invites = data || [];
-    box.innerHTML = CO.invites.map(i => `<div class="row"><div class="main"><b class="mono">${esc(i.code.slice(0, 5) + '-' + i.code.slice(5))}</b><div class="sub">действует до ${new Date(i.expires_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</div></div><button class="btn del" data-delinv="${esc(i.code)}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="sub dim">Нет активных приглашений.</div>';
+    box.innerHTML = CO.invites.map(i => `<div class="row"><div class="main"><b class="mono">${esc(i.code.slice(0, 5) + '-' + i.code.slice(5))}</b><div class="sub">действует до ${new Date(i.expires_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</div></div><button class="btn del" data-cpinv="${esc(i.code)}" aria-label="Скопировать">${ic('copy')}</button><button class="btn del" data-delinv="${esc(i.code)}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="sub dim">Нет активных приглашений.</div>';
+    box.querySelectorAll('[data-cpinv]').forEach(b => b.onclick = () => copyText(inviteText(b.dataset.cpinv)));
     box.querySelectorAll('[data-delinv]').forEach(b => b.onclick = async () => { await sb.from('coach_invites').delete().eq('code', b.dataset.delinv); coachRender(); });
   });
 }
+const prettyCode = code => code.slice(0, 5) + '-' + code.slice(5);
+const inviteText = code => `Присоединяйтесь ко мне в GymBro. Откройте ${location.origin + location.pathname.replace(/index\.html$/, '')}, затем «Аккаунт» → «Мой тренер» и введите код: ${prettyCode(code)}`;
+async function copyText(text) { try { await navigator.clipboard.writeText(text); toast('Скопировано'); } catch { prompt('Скопируйте текст:', text); } }
+// the code may arrive inside the whole invitation text: pull it out
+const findCode = t => { const m = /\b([A-Z0-9]{5})-?([A-Z0-9]{5})\b/i.exec(String(t || '').toUpperCase().replace(/[^A-Z0-9\-\s]/g, ' ')); return m ? m[1] + '-' + m[2] : ''; };
 async function inviteSheet() {
   let code; try { code = await rpc('create_invite'); } catch (e) { return toast(coachErr(e)); }
-  const pretty = code.slice(0, 5) + '-' + code.slice(5), url = location.origin + location.pathname.replace(/index\.html$/, '');
-  const text = `Присоединяйтесь ко мне в GymBro. Откройте ${url}, затем «Аккаунт» → «Мой тренер» и введите код: ${pretty}`;
+  const pretty = prettyCode(code), text = inviteText(code);
   sheet(`<h2 class="sh">Приглашение</h2><div class="dim small">Отправьте код подопечному. Он действует 7 дней и работает один раз.</div>
     <div class="bigcode">${esc(pretty)}</div>
     <div class="btns"><button class="btn" id="icopy">${ic('copy')}Скопировать</button>${navigator.share ? `<button class="btn ghost" id="ishare">${ic('right')}Отправить</button>` : ''}</div>
     <div class="dim small" style="margin-top:12px">После ввода кода подопечный сам выберет, что вам показывать: питание, тренировки, замеры, фото или витамины.</div>`, () => {
-    $('#icopy').onclick = async () => { try { await navigator.clipboard.writeText(text); toast('Скопировано'); } catch { prompt('Скопируйте текст:', text); } };
+    $('#icopy').onclick = () => copyText(text);
     if ($('#ishare')) $('#ishare').onclick = () => navigator.share({ text }).catch(() => {});
   });
   coachRender();
