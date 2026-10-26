@@ -278,16 +278,16 @@ const foldSet = () => { try { return new Set(JSON.parse(localStorage.getItem('gy
 const folded = k => foldSet().has(k);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
-  const mealRow = m => `<div class="row pick ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
+  const mealRow = m => `<div class="row pick mrow ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main"><div class="mn">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}</div><div class="msub">${m.g} г · <span class="mp">Б${r1(m.p)}</span> <span class="mf">Ж${r1(m.f)}</span> <span class="mc2">У${r1(m.c)}</span></div></div><div class="mk"><b>${Math.round(m.kcal)}</b><small>ккал</small></div><button class="btn del" data-delmeal="${m.id}" aria-label="Удалить">${ic('x')}</button></div>`;
   const groups = [...MT.map(([k, n]) => [k, n, meals.filter(m => m.type === k)]), ['', 'Без категории', meals.filter(m => !m.type)]].filter(([k, , l]) => k || l.length);
   $('#view').innerHTML = `
     <div class="toprow"><button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>${streakChip('nutr')}</div>
     ${ringCard(t, g)}
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
     ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
-    <div class="card"><h2>Приёмы пищи</h2>
-      ${groups.map(([k, n, list]) => `<div class="mgroup ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}${folded(k) && list.length ? ' · ' + list.length : ''}</span>${k ? `<button class="btn sm ghost addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}Добавить</button>` : ''}</div>${list.length ? `<div class="mgm">Б${r1(list.reduce((a, m) => a + m.p, 0))} Ж${r1(list.reduce((a, m) => a + m.f, 0))} У${r1(list.reduce((a, m) => a + m.c, 0))}</div>` : ''}<div class="mgbody">${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div></div>`).join('')}
-    </div>`;
+    <div class="sect">Приёмы пищи</div>
+    ${groups.map(([k, n, list]) => { const sum = f => r1(list.reduce((a, m) => a + m[f], 0)); return `<div class="mcard mt-${k || 'x'} ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><div class="mht"><b>${n}</b>${list.length ? `<span class="mkc"><em>${Math.round(list.reduce((a, m) => a + m.kcal, 0))}</em> ккал<span class="mcnt"> · ${list.length}</span></span>` : ''}</div>${k ? `<button class="addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.length ? `<div class="mgm"><span class="mc p">Б${sum('p')}</span><span class="mc f">Ж${sum('f')}</span><span class="mc c">У${sum('c')}</span></div>` : ''}<div class="mgbody">${list.map(mealRow).join('')}</div></div>`; }).join('')}
+    `;
   $('#dt').onclick = () => {
     const want = !dt.train;
     if (want === autoTrain(day)) delete S.dayType[day]; else S.dayType[day] = want;
@@ -297,7 +297,6 @@ function viewFood() {
   document.querySelectorAll('[data-tog]').forEach(h => h.onclick = () => {
     const k = h.dataset.tog, g = h.parentElement, on = g.classList.toggle('folded'); h.setAttribute('aria-expanded', String(!on));
     const set = foldSet(); if (on) set.add(k); else set.delete(k); try { localStorage.setItem('gymbro.fold', JSON.stringify([...set])); } catch { /* ignore */ }
-    const cnt = S.meals.filter(m => m.date === day && (m.type || '') === k).length, sp = h.querySelector('span'); sp.textContent = sp.textContent.replace(/ · \d+$/, '') + (on && cnt ? ' · ' + cnt : '');
   });
   $('#copy').onclick = () => copyMealsSheet();
   if ($('#copytoday')) $('#copytoday').onclick = () => copyMealsSheet({ target: today(), src: day });
@@ -920,7 +919,7 @@ function viewTrain() {
       return `<div class="card ${cur ? 'excur' : ''} ${isNew('ex' + i)}"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}${e.done ? '<span class="tag train">Завершено</span>' : ''}</span><span class="exbtns">${e.done ? `<button class="btn sm ghost" data-fold="${i}">Свернуть</button>` : `<button class="btn sm ghost" data-finish="${i}">${ic('check')}Завершить</button>`}<button class="btn del" data-delex="${i}">${ic('x')}</button></span></h2>
         ${e.plan && e.plan.length ? `<div class="plan"><span class="dim">План:</span>${e.plan.map((x, j) => `<span class="pl ${j < e.sets.length ? 'ok' : ''}">${x.w}×${x.r}</span>`).join('')}</div>` : ''}
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
-        ${e.sets.map((s, j) => `<div class="row pick ${isNew(i + '.' + j)}" data-editset="${i}.${j}"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
+        ${e.sets.map((s, j) => `<div class="row pick ${isNew(i + '.' + j)}" data-editset="${i}.${j}"><div class="main"><b class="sn">${j + 1}</b><span class="sv"><b>${s.w}</b> кг × <b>${s.r}</b></span></div><span class="orm">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
         <div class="grid4" style="grid-template-columns:1fr 1fr auto auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${nxt.w}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${nxt.r}"><button class="btn ghost icon" data-plate="${i}" aria-label="Калькулятор блинов">${ic('disc')}</button><button class="btn" data-addset="${i}">+</button></div>
         <div class="sub dim" style="margin-top:6px">Объём: ${Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0))} кг</div></div>`;
     }).join('') || '<div class="empty">В этот день тренировок нет</div>'}
