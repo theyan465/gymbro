@@ -398,3 +398,8 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 #sheet .mi[data-lang] { width: 100%; }
 .mgh .addto { margin-left: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
 .mgh .addto svg { width: 16px; height: 16px; }
+.mgh[data-tog] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mgh .chv { display: grid; place-items: center; width: 20px; color: var(--dim); transition: transform .2s var(--ease); transform: rotate(90deg); }
+.mgh .chv svg { width: 16px; height: 16px; }
+.mgroup.folded .mgh .chv { transform: rotate(0deg); }
+.mgroup.folded .mgbody { display: none; }
