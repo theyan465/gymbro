@@ -91,16 +91,16 @@ function coachBindHome() { document.querySelectorAll('[data-gocoach]').forEach(e
 function coachFoodCard() {
   const c = S.coachNutrition; if (!c) return '';
   const meals = (c.meals || []).filter(m => m.text);
-  return `<div class="card"><h2><span class="hic">${ic('award')}План питания</span><small>${esc(c.title)}</small></h2>
-    ${meals.map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span>${esc(m.text)}</span></div>`).join('')}
-    ${c.tips ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap">${esc(c.tips)}</div>` : ''}${c.note ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap">${esc(c.note)}</div>` : ''}</div>`;
+  return `<div class="card"><h2><span class="hic">${ic('award')}План питания</span><small><span translate="no">${esc(c.title)}</span></small></h2>
+    ${meals.map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span><span translate="no">${esc(m.text)}</span></span></div>`).join('')}
+    ${c.tips ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap"><span translate="no">${esc(c.tips)}</span></div>` : ''}${c.note ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap"><span translate="no">${esc(c.note)}</span></div>` : ''}</div>`;
 }
 function coachTrainCard(d) {
   const tid = S.schedule && S.schedule[wday(d)], t = tid && S.templates.find(x => x.id === tid);
   if (!t || (getWorkout(false) || { exercises: [] }).exercises.length) return '';
   return `<div class="card"><h2><span class="hic">${ic('award')}По плану тренера</span><small>${esc((S.coachTraining || {}).title || '')}</small></h2>
     <div class="main"><b>${esc(t.name)}</b><div class="sub">${t.exercises.map(e => esc(e.name)).join(', ')}</div></div><button class="btn full" data-plan-start="${t.id}" style="margin-top:10px">${ic('plus')}Начать тренировку</button>
-    ${(S.coachTraining && (S.coachTraining.tips || S.coachTraining.note)) ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap">${esc(S.coachTraining.tips || S.coachTraining.note)}</div>` : ''}</div>`;
+    ${(S.coachTraining && (S.coachTraining.tips || S.coachTraining.note)) ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap"><span translate="no">${esc(S.coachTraining.tips || S.coachTraining.note)}</span></div>` : ''}</div>`;
 }
 
 // ---------- chat ----------
@@ -125,8 +125,8 @@ function drawChat(scroll) {
   let lastDay = '';
   box.innerHTML = c.msgs.map(m => {
     const mine = m.sender_id === user.id, d = (m.created_at || '').slice(0, 10), head = d !== lastDay ? `<div class="cday">${esc(dayLabel(dkey(m.created_at)))}</div>` : ''; lastDay = d;
-    const time = new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    return head + `<div class="msg ${mine ? 'me' : 'them'}"><div class="mb">${m.ref_date ? `<button class="mref" data-ref="${m.ref_date}">${ic('calendar')}${esc(dayLabel(m.ref_date))}</button>` : ''}${esc(m.body)}${m.plan_id ? `<button class="mplan" data-mplan="${m.plan_id}">${ic('list')}Открыть план</button>` : ''}<small>${time}${mine && m.read_at ? ' · прочитано' : ''}</small></div></div>`;
+    const time = new Date(m.created_at).toLocaleTimeString(LOC, { hour: '2-digit', minute: '2-digit' });
+    return head + `<div class="msg ${mine ? 'me' : 'them'}"><div class="mb">${m.ref_date ? `<button class="mref" data-ref="${m.ref_date}">${ic('calendar')}${esc(dayLabel(m.ref_date))}</button>` : ''}<span translate="no">${esc(tsys(m.body))}</span>${m.plan_id ? `<button class="mplan" data-mplan="${m.plan_id}">${ic('list')}Открыть план</button>` : ''}<small>${time}${mine && m.read_at ? ' · прочитано' : ''}</small></div></div>`;
   }).join('') || '<div class="empty">Сообщений пока нет. Напишите первым.</div>';
   if (scroll || near) box.scrollTop = box.scrollHeight;
   box.querySelectorAll('[data-ref]').forEach(b => b.onclick = () => { if (c.role === 'client') { day = b.dataset.ref; chatClose(); tab = 'home'; animate = true; render(); } else { CO.day = b.dataset.ref; CO.tab = 'nutrition'; coachRender(); } });
@@ -164,17 +164,17 @@ function planBody(p) {
   if (p.kind === 'nutrition') {
     const row = (t, g) => g ? `<div class="prow"><b>${t}</b><span>${g.kcal} ккал · Б ${g.p} · Ж ${g.f} · У ${g.c}</span></div>` : '';
     return row('Тренировочный день', P.goals) + row('День отдыха', P.goalsRest) + (P.trainDays ? `<div class="prow"><b>Тренировочные дни</b><span>${wdNames(P.trainDays)}</span></div>` : '') +
-      ((P.meals || []).filter(m => m.text).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(m => m.text).map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span>${esc(m.text)}</span></div>`).join('')}` : '') +
-      (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap">${esc(P.notes)}</div>` : '');
+      ((P.meals || []).filter(m => m.text).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(m => m.text).map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span><span translate="no">${esc(m.text)}</span></span></div>`).join('')}` : '') +
+      (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
   }
-  return (P.templates || []).map(t => { const days = Object.entries(P.schedule || {}).filter(([, id]) => id === t.id).map(([wd]) => +wd); return `<div class="pday"><div class="ph2"><b>${esc(t.name)}</b><span>${wdNames(days)}</span></div>${t.exercises.map(e => `<div class="pex"><span>${esc(e.name)}</span><em>${esc(planText(e.plan)) || '—'}</em></div>`).join('')}</div>`; }).join('') + (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap">${esc(P.notes)}</div>` : '');
+  return (P.templates || []).map(t => { const days = Object.entries(P.schedule || {}).filter(([, id]) => id === t.id).map(([wd]) => +wd); return `<div class="pday"><div class="ph2"><b translate="no">${esc(t.name)}</b><span>${wdNames(days)}</span></div>${t.exercises.map(e => `<div class="pex"><span>${esc(e.name)}</span><em>${esc(planText(e.plan)) || '—'}</em></div>`).join('')}</div>`; }).join('') + (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
 }
 async function planOpen(id) {
   let p; try { p = await planFetch(id); } catch (e) { return toast(coachErr(e)); }
   const mine = p.client_id === user.id, st = { sent: 'Ожидает ответа', applied: 'Принят', declined: 'Отклонён' }[p.status];
-  sheet(`<h2 class="sh">${p.kind === 'nutrition' ? 'План питания' : 'План тренировок'}</h2><div class="pheader"><b>${esc(p.title)}</b><span class="tag ${p.status === 'applied' ? 'train' : ''}">${st}</span></div>
-    <div class="dim small">${new Date(p.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div>
-    ${p.note ? `<div class="pnote">${esc(p.note)}</div>` : ''}<div class="pbody">${planBody(p)}</div>
+  sheet(`<h2 class="sh">${p.kind === 'nutrition' ? 'План питания' : 'План тренировок'}</h2><div class="pheader"><b><span translate="no">${esc(p.title)}</span></b><span class="tag ${p.status === 'applied' ? 'train' : ''}">${st}</span></div>
+    <div class="dim small">${new Date(p.created_at).toLocaleDateString(LOC, { day: 'numeric', month: 'long' })}</div>
+    ${p.note ? `<div class="pnote"><span translate="no">${esc(p.note)}</span></div>` : ''}<div class="pbody">${planBody(p)}</div>
     ${mine && p.status === 'sent' ? `<div class="sub dim" style="margin-top:10px">${p.kind === 'nutrition' ? 'При принятии обновятся ваши нормы КБЖУ.' : 'При принятии шаблоны плана появятся в «Тренировки → Шаблоны», а расписание — в подсказках по дням.'}</div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="pacc">Принять и применить</button><button class="btn ghost danger" id="pdec">Отклонить</button></div>` : ''}`, () => {
     if ($('#pacc')) $('#pacc').onclick = async () => {
@@ -223,7 +223,7 @@ function coachMyView() {
     <label class="sw" style="margin-top:10px"><input type="checkbox" id="pcoach" ${pr.is_coach ? 'checked' : ''}><i></i><span>Я тренер: хочу вести подопечных</span></label></div>`;
   $('#view').innerHTML = cback('cback', 'Аккаунт') + lockedNote() + (!my ? `<div class="card"><h2>Мой тренер</h2><div class="dim small" style="margin-bottom:12px">Тренер видит только то, что вы разрешите, и присылает вам планы питания и тренировок. Отключить его можно в любой момент. Код подключения вам даёт тренер.</div>
       <button class="btn full" id="connect">${ic('plus')}Подключить тренера по коду</button></div>`
-    : `<div class="card"><h2>Мой тренер</h2><div class="coachhead"><div class="avatar sm">${esc(my.coach_name[0].toUpperCase())}</div><div class="main"><b>${esc(my.coach_name)}</b><div class="sub">с ${new Date(my.since).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</div></div></div>
+    : `<div class="card"><h2>Мой тренер</h2><div class="coachhead"><div class="avatar sm">${esc(my.coach_name[0].toUpperCase())}</div><div class="main"><b>${esc(my.coach_name)}</b><div class="sub">с ${new Date(my.since).toLocaleDateString(LOC, { day: 'numeric', month: 'long' })}</div></div></div>
       <button class="btn full" id="gochat" style="margin-top:12px">${ic('right')}Чат с тренером${my.unread ? `<span class="nbadge inl">${my.unread}</span>` : ''}</button></div>
       <div class="card"><h2>Планы от тренера</h2><div id="myplans"><div class="empty">Загружаю…</div></div></div>
       <div class="card"><h2>Что видит тренер</h2>${SHARES.map(([k, n, d]) => `<label class="sw"><input type="checkbox" data-sh="${k}" ${my.share[k] ? 'checked' : ''} ${k === 'photos' && !my.share.body ? 'disabled' : ''}><i></i><span>${n}<small>${d}</small></span></label>`).join('')}</div>
@@ -243,7 +243,7 @@ function coachMyView() {
     $('#endlink').onclick = async () => { if (!confirm('Отключить тренера? Он перестанет видеть ваши данные. Планы, которые вы уже применили, останутся.')) return; try { await rpc('end_link', { p_link: my.link_id }); await coachRefresh(); toast('Тренер отключён'); } catch (e) { toast(coachErr(e)); } };
     plansForMe().then(list => {
       const box = $('#myplans'); if (!box) return;
-      box.innerHTML = list.map(p => `<div class="row pick" data-plan="${p.id}"><div class="main"><b>${esc(p.title)}</b><div class="sub">${p.kind === 'nutrition' ? 'План питания' : 'План тренировок'} · ${new Date(p.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</div></div><span class="tag ${p.status === 'sent' ? 'train' : ''}">${st[p.status]}</span></div>`).join('') || '<div class="sub dim">Тренер пока ничего не присылал.</div>';
+      box.innerHTML = list.map(p => `<div class="row pick" data-plan="${p.id}"><div class="main"><b><span translate="no">${esc(p.title)}</span></b><div class="sub">${p.kind === 'nutrition' ? 'План питания' : 'План тренировок'} · ${new Date(p.created_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</div></div><span class="tag ${p.status === 'sent' ? 'train' : ''}">${st[p.status]}</span></div>`).join('') || '<div class="sub dim">Тренер пока ничего не присылал.</div>';
       box.querySelectorAll('[data-plan]').forEach(r => r.onclick = () => planOpen(r.dataset.plan));
     }).catch(e => { if ($('#myplans')) $('#myplans').innerHTML = `<div class="sub warn">${esc(coachErr(e))}</div>`; });
   }
@@ -327,7 +327,7 @@ function coachListView() {
   document.querySelectorAll('[data-cid]').forEach(e => e.onclick = () => coachOpenClient(e.dataset.cid));
   sb.from('coach_invites').select('*').is('used_by', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).then(({ data }) => {
     const box = $('#invlist'); if (!box) return; CO.invites = data || [];
-    box.innerHTML = CO.invites.map(i => `<div class="row"><div class="main"><b class="mono">${esc(i.code.slice(0, 5) + '-' + i.code.slice(5))}</b><div class="sub">действует до ${new Date(i.expires_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</div></div><button class="btn del" data-delinv="${esc(i.code)}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="sub dim">Нет активных приглашений.</div>';
+    box.innerHTML = CO.invites.map(i => `<div class="row"><div class="main"><b class="mono">${esc(i.code.slice(0, 5) + '-' + i.code.slice(5))}</b><div class="sub">действует до ${new Date(i.expires_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</div></div><button class="btn del" data-delinv="${esc(i.code)}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="sub dim">Нет активных приглашений.</div>';
     box.querySelectorAll('[data-delinv]').forEach(b => b.onclick = async () => { await sb.from('coach_invites').delete().eq('code', b.dataset.delinv); coachRender(); });
   });
 }
@@ -436,7 +436,7 @@ function coachClientView() {
       sb.from('coach_plans').select('*').eq('link_id', c.link_id).order('created_at', { ascending: false }).limit(40).then(({ data, error }) => {
         const box = $('#planlist'); if (!box) return; if (error) { box.innerHTML = `<div class="sub warn">${esc(coachErr(error))}</div>`; return; }
         const list = (data || []).map(planClean); list.forEach(p => { CO.plans[p.id] = p; }); const st = { sent: 'Ожидает', applied: 'Принят', declined: 'Отклонён' };
-        box.innerHTML = list.map(p => `<div class="row pick" data-plan="${p.id}"><div class="main"><b>${esc(p.title)}</b><div class="sub">${p.kind === 'nutrition' ? 'Питание' : 'Тренировки'} · ${new Date(p.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}</div></div><span class="tag ${p.status === 'applied' ? 'train' : p.status === 'declined' ? 'rest' : ''}">${st[p.status]}</span></div>`).join('') || '<div class="sub dim">Вы ещё не отправляли планов.</div>';
+        box.innerHTML = list.map(p => `<div class="row pick" data-plan="${p.id}"><div class="main"><b><span translate="no">${esc(p.title)}</span></b><div class="sub">${p.kind === 'nutrition' ? 'Питание' : 'Тренировки'} · ${new Date(p.created_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short' })}</div></div><span class="tag ${p.status === 'applied' ? 'train' : p.status === 'declined' ? 'rest' : ''}">${st[p.status]}</span></div>`).join('') || '<div class="sub dim">Вы ещё не отправляли планов.</div>';
         box.querySelectorAll('[data-plan]').forEach(r => r.onclick = () => planOpen(r.dataset.plan));
       });
     };
@@ -489,7 +489,7 @@ function nutritionEditor(c, draft) {
     <div class="pgroup"><div class="ph3">${ic('bolt')}Тренировочный день</div>${fields('g', draft.goals)}<button class="btn ghost sm" data-fit="g" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <div class="pgroup"><div class="ph3">${ic('moon')}День отдыха</div>${fields('r', draft.goalsRest)}<button class="btn ghost sm" data-fit="r" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <label>Тренировочные дни недели</label><div id="ptd">${wdChips(draft.trainDays)}</div>
-    <label>Меню и рекомендации по приёмам пищи</label><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г">${esc(m.text)}</textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
+    <label>Меню и рекомендации по приёмам пищи</label><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г"><span translate="no">${esc(m.text)}</span></textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
     <button class="btn ghost sm" id="madd" style="margin-top:6px">${ic('plus')}Приём пищи</button>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Вода, сон, замены продуктов, как взвешиваться…">${esc(draft.notes)}</textarea>
     ${tplButtons(c)}`, p => {
@@ -509,7 +509,7 @@ function nutritionEditor(c, draft) {
   });
 }
 function trainingEditor(c, draft) {
-  if (!draft) draft = { title: '', notes: '', days: [{ id: uid(), name: 'День 1', wd: [1], exercises: [] }] };
+  if (!draft) draft = { title: '', notes: '', days: [{ id: uid(), name: tx('День') + ' 1', wd: [1], exercises: [] }] };
   if (!c && !draft._tpl) draft._tpl = 'new';
   sheet(`<h2 class="sh">${c ? 'План тренировок · ' + esc(c.name) : 'Шаблон тренировок'}</h2>
     <label style="margin-top:0">${c ? 'Название плана' : 'Название шаблона'}</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Масса, 3 дня в неделю" maxlength="120">
@@ -527,7 +527,7 @@ function trainingEditor(c, draft) {
     };
     const again = () => trainingEditor(c, draft);
     tplBind('training', c, draft, sync);
-    $('#dadd').onclick = () => { sync(); draft.days.push({ id: uid(), name: 'День ' + (draft.days.length + 1), wd: [], exercises: [] }); again(); };
+    $('#dadd').onclick = () => { sync(); draft.days.push({ id: uid(), name: tx('День') + ' ' + (draft.days.length + 1), wd: [], exercises: [] }); again(); };
     p.querySelectorAll('[data-ddel]').forEach(b => b.onclick = () => { sync(); draft.days.splice(+b.dataset.ddel, 1); again(); });
     p.querySelectorAll('[data-edel]').forEach(b => b.onclick = () => { sync(); const [i, j] = b.dataset.edel.split('.').map(Number); draft.days[i].exercises.splice(j, 1); again(); });
     p.querySelectorAll('[data-eadd]').forEach(b => b.onclick = () => { sync(); const i = +b.dataset.eadd; addExercise(name => { draft.days[i].exercises.push({ name, plan: '' }); again(); }); });
@@ -578,7 +578,7 @@ function tplBind(kind, c, draft, sync) {
 }
 function ctplPick(kind, c, draft) {
   const L = ctplList(kind);
-  sheet(`<h2 class="sh">Шаблоны ${kind === 'nutrition' ? 'питания' : 'тренировок'}</h2>${L.map(t => `<div class="row pick" data-tp="${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${esc(ctplInfo(kind, t.draft))}</div></div><button class="btn del" data-tpdel="${t.id}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="empty">Шаблонов пока нет. Сохраните план кнопкой «В шаблон».</div>'}
+  sheet(`<h2 class="sh">${kind === 'nutrition' ? 'Шаблоны питания' : 'Шаблоны тренировок'}</h2>${L.map(t => `<div class="row pick" data-tp="${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${esc(ctplInfo(kind, t.draft))}</div></div><button class="btn del" data-tpdel="${t.id}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="empty">Шаблонов пока нет. Сохраните план кнопкой «В шаблон».</div>'}
     ${kind === 'training' && L.length ? '<div class="dim small" style="margin-top:8px">Дни шаблона добавятся к плану.</div>' : ''}`, pn => {
     pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = e => {
       if (e.target.closest('[data-tpdel]')) return; const t = L.find(x => x.id === r.dataset.tp), d = ctplDraft(kind, t);
