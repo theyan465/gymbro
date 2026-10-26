@@ -1449,7 +1449,7 @@ function viewMore() {
       catch { alert('Неверный файл'); }
     };
   } else if (moreSub === 'admin') {
-    $('#view').innerHTML = back + `<div class="card menu"><h2>Администратор</h2>${mi('admBase', 'db', 'Общая база', 'Продукты и упражнения всех пользователей')}${mi('admCode', 'key', 'Код доступа', 'Нужен новым пользователям при регистрации')}</div>`;
+    $('#view').innerHTML = back + `<div class="card menu"><h2>Администратор</h2>${mi('admBase', 'db', 'Общая база', 'Продукты и упражнения всех пользователей')}${mi('admUsers', 'user', 'Пользователи', 'Все зарегистрированные аккаунты')}${mi('admCode', 'key', 'Код доступа', 'Нужен новым пользователям при регистрации')}</div>`;
   }
   if ($('#back')) $('#back').onclick = () => { moreSub = null; nav(); };
   bindAccount();
@@ -1603,6 +1603,7 @@ function bindAccount() {
   if ($('#signup')) $('#signup').onclick = () => auth('up');
   if ($('#admBase')) $('#admBase').onclick = adminBase;
   if ($('#admCode')) $('#admCode').onclick = adminCode;
+  if ($('#admUsers')) $('#admUsers').onclick = adminUsers;
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
@@ -1671,6 +1672,17 @@ async function adminCode() {
       okBtn($('#ok'), closeSheet, 'Код доступа сохранён');
     };
   });
+}
+async function adminUsers() {
+  sheet('<div class="empty">Загрузка…</div>');
+  const { data, error } = await sb.rpc('admin_users');
+  if (error) { return sheet(`<h2 class="sh">Пользователи</h2><div class="sub warn">${esc(/does not exist|schema cache/i.test(error.message) ? 'Нужно выполнить обновлённый supabase-admin.sql в Supabase.' : error.message)}</div>`); }
+  const list = (data || []).map(u => ({ ...u, email: String(u.email || ''), meals: +u.meals || 0, workouts: +u.workouts || 0 }));
+  const draw = q => {
+    q = q.trim().toLowerCase(); const rows = list.filter(u => u.email.toLowerCase().includes(q));
+    $('#ulist').innerHTML = rows.map(u => `<div class="row"><div class="main"><b translate="no">${esc(u.email)}</b>${u.is_admin ? '<span class="tag train">админ</span>' : ''}<div class="sub">${typeof ago === 'function' ? 'вход: ' + ago(u.last_sign_in_at) : ''} · в базе с ${new Date(u.created_at).toLocaleDateString(LOC, { day: 'numeric', month: 'short', year: 'numeric' })}</div><div class="sub">записей еды: ${u.meals} · тренировок: ${u.workouts}${u.data_updated ? ' · данные: ' + ago(u.data_updated) : ''}</div></div></div>`).join('') || '<div class="empty">—</div>';
+  };
+  sheet(`<h2 class="sh">Пользователи (${list.length})</h2><input id="uq" placeholder="Поиск по email" autocomplete="off" autocapitalize="none"><div id="ulist" style="margin-top:8px"></div>`, () => { draw(''); $('#uq').oninput = e => draw(e.target.value); });
 }
 async function adminBase() {
   sheet('<div class="empty">Загрузка…</div>');
