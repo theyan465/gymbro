@@ -177,15 +177,14 @@ const streakChip = (kind, label) => { const n = streak(kind); return `<div class
 function ringCard(t, g) {
   const pct = (v, goal) => Math.min(100, goal ? v / goal * 100 : 0);
   const C = 2 * Math.PI * 52, over = t.kcal > g.kcal, off = C * (1 - pct(t.kcal, g.kcal) / 100);
-  // vertical column per macro: filled from the bottom, eaten amount + goal under it
-  const col = (n, v, goal, c) => `<div class="vcol"><span class="vl">${n}</span><div class="vbar"><i style="height:${Math.max(3, pct(v, goal))}%;background:var(--${c})"></i></div><b>${Math.round(v)}</b><small>/ ${goal} г</small></div>`;
-  return `<div class="card dsum2">
-    <div class="hrow"><div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+  const mac = (n, v, goal, c) => `<div class="mac"><div class="mh"><span>${n}</span><b>${Math.round(v)}<small> / ${goal} г</small></b></div><div class="bar"><i style="width:${pct(v, goal)}%;background:var(--${c})"></i></div></div>`;
+  return `<div class="card hero">
+      <div class="ringwrap"><svg class="ring" viewBox="0 0 120 120"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
         <circle class="ring-bg" cx="60" cy="60" r="52"/><circle class="ring-fg ${over ? 'over' : ''}" cx="60" cy="60" r="52" style="--len:${C};stroke-dasharray:${C};stroke-dashoffset:${off}"/></svg>
-        <div class="ringtxt"><b>${Math.round(t.kcal)}</b><small>ккал</small></div></div>
-      <div class="hk"><div><small>Съел</small><b>${Math.round(t.kcal)}</b></div><div><small>Цель</small><b>${g.kcal}</b></div><div class="${over ? 'bad' : ''}"><small>${over ? 'Превышено' : 'Осталось'}</small><b>${Math.abs(Math.round(g.kcal - t.kcal))}</b></div></div></div>
-    <div class="vcols">${col('Жиры', t.f, g.f, 'f')}${col('Углеводы', t.c, g.c, 'c')}${col('Белки', t.p, g.p, 'p')}</div>
-  </div>`;
+        <div class="ringtxt"><b>${Math.round(t.kcal)}</b><small>из ${g.kcal} ккал</small></div></div>
+      <div class="macs">${mac('Жиры', t.f, g.f, 'f')}${mac('Углеводы', t.c, g.c, 'c')}${mac('Белки', t.p, g.p, 'p')}
+        <div class="left">${over ? 'Превышено на ' + Math.round(t.kcal - g.kcal) : 'Осталось ' + Math.round(g.kcal - t.kcal)} ккал</div></div>
+    </div>`;
 }
 const goTab = (t, d) => { tab = t; if (d) day = d; animate = true; window.scrollTo(0, 0); render(); };
 
@@ -279,7 +278,8 @@ const foldSet = () => { try { return new Set(JSON.parse(localStorage.getItem('gy
 const folded = k => foldSet().has(k);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
-  const mealRow = m => `<div class="row pick mrow ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main"><div class="mn">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}</div><div class="msub">${m.g} г · <span class="mf">Ж${r1(m.f)}</span> <span class="mc2">У${r1(m.c)}</span> <span class="mp">Б${r1(m.p)}</span></div></div><div class="mk"><b>${Math.round(m.kcal)}</b><small>ккал</small></div><button class="btn del" data-delmeal="${m.id}" aria-label="Удалить">${ic('x')}</button></div>`;
+  const cells = (g, k, f, c, p) => `<div class="mgrid"><div><b>${g}</b><small>г</small></div><div><b>${k}</b><small>ккал</small></div><div class="cf"><b>${f}</b><small>Ж</small></div><div class="cc"><b>${c}</b><small>У</small></div><div class="cp"><b>${p}</b><small>Б</small></div></div>`;
+  const mealRow = m => `<div class="row pick mrow ${isNew(m.id)}" data-editmeal="${m.id}"><div class="mtop"><div class="mn">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}</div><button class="btn del" data-delmeal="${m.id}" aria-label="Удалить">${ic('x')}</button></div>${cells(Math.round(m.g), Math.round(m.kcal), r1(m.f), r1(m.c), r1(m.p))}</div>`;
   const groups = [...MT.map(([k, n]) => [k, n, meals.filter(m => m.type === k)]), ['', 'Без категории', meals.filter(m => !m.type)]].filter(([k, , l]) => k || l.length);
   $('#view').innerHTML = `
     <div class="toprow"><button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>${streakChip('nutr')}</div>
@@ -287,7 +287,7 @@ function viewFood() {
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
     ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
     <div class="sect">Приёмы пищи</div>
-    ${groups.map(([k, n, list]) => { const sum = f => r1(list.reduce((a, m) => a + m[f], 0)); return `<div class="mcard mt-${k || 'x'} ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><div class="mht"><b>${n}</b>${list.length ? `<span class="mkc"><em>${Math.round(list.reduce((a, m) => a + m.kcal, 0))}</em> ккал<span class="mcnt"> · ${list.length}</span></span>` : ''}</div>${k ? `<button class="addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.length ? `<div class="mgm"><span class="mc f">Ж${sum('f')}</span><span class="mc c">У${sum('c')}</span><span class="mc p">Б${sum('p')}</span></div>` : ''}<div class="mgbody">${list.map(mealRow).join('')}</div></div>`; }).join('')}
+    ${groups.map(([k, n, list]) => { const sum = f => r1(list.reduce((a, m) => a + m[f], 0)); return `<div class="mcard mt-${k || 'x'} ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><div class="mht"><b>${n}</b>${list.length ? `<span class="mcnt2">${list.length}</span>` : ''}</div>${k ? `<button class="addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.length > 1 ? cells(Math.round(sum('g')), Math.round(sum('kcal')), sum('f'), sum('c'), sum('p')).replace('class="mgrid"', 'class="mgrid tot"') : ''}<div class="mgbody">${list.map(mealRow).join('')}</div></div>`; }).join('')}
     `;
   $('#dt').onclick = () => {
     const want = !dt.train;

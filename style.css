@@ -477,3 +477,21 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .vcol .vbar i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 12px 12px 0 0; transition: height .8s var(--ease); opacity: .9; }
 .vcol b { font-size: 20px; font-weight: 700; line-height: 1.1; margin-top: 2px; }
 .vcol small { font-size: 12px; color: var(--dim); }
+
+/* ---- meal cards: table-like columns (g | kcal | fat | carbs | protein) ---- */
+.mgrid { display: grid; grid-template-columns: 1fr 1.15fr 1fr 1fr 1fr; gap: 6px; text-align: center; }
+.mgrid > div { background: rgba(255,255,255,.04); border-radius: 11px; padding: 6px 2px 5px; min-width: 0; }
+.mgrid b { display: block; font-size: 15px; font-weight: 700; line-height: 1.15; }
+.mgrid small { display: block; font-size: 10.5px; font-weight: 600; color: var(--dim); margin-top: 1px; }
+.mgrid .cf b, .mgrid .cf small { color: var(--f); } .mgrid .cc b, .mgrid .cc small { color: var(--c); } .mgrid .cp b, .mgrid .cp small { color: var(--p); }
+.mgrid.tot { margin: 4px 0 6px; }
+.mgrid.tot > div { background: color-mix(in srgb, var(--mc) 10%, rgba(255,255,255,.03)); }
+.mcard .mrow { display: block; padding: 11px 0 10px; }
+.mcard .mtop { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.mcard .mtop .mn { flex: 1; min-width: 0; }
+.mcard .mtop .btn.del { margin: -4px -6px 0 0; }
+.mcard .mcnt2 { display: none; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; place-items: center; font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--mc) 20%, transparent); color: var(--mc); }
+.mcard.folded .mcnt2 { display: inline-grid; }
+.mgrid > div { padding: 4px 2px 3px; border-radius: 10px; }
+.mgrid b { font-size: 14px; } .mgrid small { font-size: 10px; margin-top: 0; }
+.mcard .mrow { padding: 9px 0 8px; } .mcard .mtop { margin-bottom: 5px; }
