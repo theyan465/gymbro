@@ -403,3 +403,7 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .mgh .chv svg { width: 16px; height: 16px; }
 .mgroup.folded .mgh .chv { transform: rotate(0deg); }
 .mgroup.folded .mgbody { display: none; }
+.pacts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pacts .btn { flex: 1 1 auto; margin: 0; }
+.pacts .btn { padding: 9px 12px; font-size: 14px; border-radius: 14px; }
+.pacts .btn svg { width: 17px; height: 17px; }

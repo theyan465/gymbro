@@ -368,7 +368,11 @@ function copyMealsSheet(opts = {}) {
 
 function pickFood(opts = {}) {
   foodChoose = opts.onPick || null;
-  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
+  const cloud = !!(sb && user), mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
+  let pt = 'mine', shared = [], shT = null, shSeq = 0;
+  const sub = f => `${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
+  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
+  const srow = f => { const mine = !!findMine(f); return `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div>${mine ? `<span class="tag train">${ic('check')}В моих</span>` : `<button class="btn sm ghost" data-sadd="${f.id}">${ic('plus')}В мои</button>`}</div>`; };
   const draw = q => {
     q = q.trim().toLowerCase();
     let html;
@@ -377,19 +381,39 @@ function pickFood(opts = {}) {
       const rest = S.foods.filter(f => !ids.has(f.id)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30);
       html = (recent.length ? `<div class="dim small" style="margin:4px 0 0">Недавние</div>${recent.map(row).join('')}` : '') + (rest.length ? `<div class="dim small" style="margin:8px 0 0">${recent.length ? 'Остальные' : 'Мои продукты'}</div>${rest.map(row).join('')}` : '');
     } else html = S.foods.filter(f => nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30).map(row).join('');
-    $('#flist').innerHTML = html || '<div class="empty">Нет продуктов. Создайте новый или отсканируйте.</div>';
+    $('#flist').innerHTML = html || `<div class="empty">${S.foods.length ? 'Ничего не найдено в моих продуктах.' : 'В моих продуктах пока пусто.'}${cloud ? ' Загляните в «Общая база» или создайте новый.' : ''}</div>`;
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = () => chooseFood(S.foods.find(f => f.id === r.dataset.id)));
   };
-  const mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
-  sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2><input id="q" placeholder="Поиск..." autocomplete="off"><div id="flist" style="margin:8px 0"></div><div id="slist"></div>
-    <div class="btns" style="margin-top:8px"><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button>`}</div>
-    ${opts.onPick ? '' : `<div class="btns" style="margin-top:8px"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn ghost" id="quick">Быстро: только ккал</button></div>`}`, () => {
-    draw(''); $('#q').oninput = e => { draw(e.target.value); searchShared(e.target.value); };
+  const drawShared = () => {
+    const box = $('#flist'); if (!box) return;
+    box.innerHTML = shared.length ? shared.map(srow).join('') : '<div class="empty">В общей базе ничего не найдено.</div>';
+    box.querySelectorAll('[data-sid]').forEach(r => r.onclick = e => {
+      const x = shared.find(y => y.id === r.dataset.sid); if (!x) return;
+      if (e.target.closest('[data-sadd]')) { adoptShared(x); toast('Добавлено в мои продукты'); drawShared(); return; }
+      chooseFood(adoptShared(x));
+    });
+  };
+  const loadShared = q => {
+    clearTimeout(shT); const seq = ++shSeq; q = q.trim().replace(/[%_,()]/g, ' ');
+    $('#flist').innerHTML = '<div class="empty">Загрузка…</div>';
+    shT = setTimeout(async () => {
+      let qb = sb.from('shared_foods').select('*'); qb = q.length >= 2 ? qb.ilike('name', '%' + q + '%') : qb.order('created_at', { ascending: false });
+      const { data } = await qb.limit(40); if (seq !== shSeq || pt !== 'shared') return;
+      shared = (data || []).map(cleanShared); drawShared();
+    }, q ? 300 : 0);
+  };
+  const go = () => { const q = $('#q').value; document.querySelectorAll('#ptabs [data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === pt)); pt === 'mine' ? draw(q) : loadShared(q); };
+  sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2>
+    <div class="pacts">${opts.onPick ? '' : `<button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button>`}<button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
+    ${cloud ? `<div class="seg" id="ptabs" style="margin-top:10px"><button data-pt="mine" class="on">Мои продукты</button><button data-pt="shared">Общая база</button></div>` : ''}
+    <input id="q" placeholder="Поиск..." autocomplete="off" style="margin-top:10px"><div id="flist" style="margin:8px 0"></div>`, () => {
+    draw(''); $('#q').oninput = e => { pt === 'mine' ? draw(e.target.value) : loadShared(e.target.value); };
+    document.querySelectorAll('#ptabs [data-pt]').forEach(b => b.onclick = () => { if (pt !== b.dataset.pt) { pt = b.dataset.pt; go(); } });
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = () => foodForm({ name: 'Быстрая запись', quick: true });
+    if ($('#dish')) $('#dish').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
     if ($('#pscan')) $('#pscan').onclick = () => scanBarcode();
     if ($('#pocr')) $('#pocr').onclick = () => ocrLabel();
-    if ($('#dish')) $('#dish').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
   });
 }
 
@@ -415,6 +439,7 @@ function dishEditor(draft) {
     <button class="btn ghost" id="dadd" style="margin-top:6px">${ic('plus')}Продукт</button>
     <label>Вес готового блюда, г <small class="dim">— если при готовке вес меняется</small></label><input id="dcook" inputmode="decimal" value="${draft.cooked || ''}" placeholder="по умолчанию сумма продуктов">
     <div class="dsum" id="dsum"></div>
+    ${!one && !draft.id && sb && user ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="dshare" style="width:auto"> Добавить в общую базу</label>` : ''}
     <div class="btns" style="margin-top:14px"><button class="btn" id="dsave">${one ? 'Добавить в дневник' : draft.id ? 'Сохранить блюдо' : 'Сохранить блюдо'}</button></div>`, p => {
     const sync = () => { if ($('#dn')) draft.name = $('#dn').value; draft.cooked = $('#dcook').value; };
     const upd = () => {
@@ -436,7 +461,7 @@ function dishEditor(draft) {
       if (!draft.name.trim()) return $('#dn').focus();
       const vals = { name: draft.name.trim(), kcal: Math.round(t.kcal * 100 / t.w), p: r1(t.p * 100 / t.w), f: r1(t.f * 100 / t.w), c: r1(t.c * 100 / t.w), dish: { items: draft.items.map(i => ({ ...i })), cooked: num(draft.cooked) || 0 } };
       let food = draft.id && S.foods.find(x => x.id === draft.id);
-      if (food) Object.assign(food, vals); else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); }
+      if (food) Object.assign(food, vals); else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); if ($('#dshare') && $('#dshare').checked) shareFood(food); }
       save(); okBtn($('#dsave'), () => { if (draft.id) { closeSheet(); render(); } else addMealSheet(food); }, 'Блюдо сохранено');
     };
     upd();
@@ -639,7 +664,7 @@ async function lookupBarcode(code) {
   sheet(`<div class="empty">Ищу ${esc(code)}…</div>`);
   if (sb && user) {
     const { data } = await sb.from('shared_foods').select('*').eq('barcode', code).maybeSingle();
-    if (data) return addMealSheet(adoptShared(data));
+    if (data) return addMealSheet(adoptShared(cleanShared(data)));
   }
   let found = null;
   try {
@@ -1367,8 +1392,9 @@ function viewMore() {
     bindChips($('#tdays'));
     $('#sg').onclick = () => { S.trainDays = pickedDays($('#tdays')); save(); okBtn($('#sg'), null, 'Дни сохранены', true); };
   } else if (moreSub === 'foods') {
-    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
+    $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div>${sb && user ? `<button class="btn del" data-sharefood="${f.id}" aria-label="В общую базу">${ic('db')}</button>` : ''}<button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button><button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
     document.querySelectorAll('[data-editfood]').forEach(b => b.onclick = () => { const f = S.foods.find(x => x.id === b.dataset.editfood); f.dish ? dishEditor(dishDraft(f)) : foodForm({ ...f, isEdit: true, mode: '100' }); });
+    document.querySelectorAll('[data-sharefood]').forEach(b => b.onclick = async () => { const ok = await shareFood(S.foods.find(f => f.id === b.dataset.sharefood)); toast(ok ? 'Добавлено в общую базу' : 'Не удалось: нет доступа к общей базе'); });
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
   } else if ((moreSub === 'mycoach' || moreSub === 'coach') && typeof coachView === 'function') {
     coachView(moreSub); return;
@@ -1581,27 +1607,27 @@ async function shareExercise(name) {
   sharedEx.push(name);
   await sb.from('shared_exercises').upsert({ name_key: key, name: name.trim() }, { onConflict: 'name_key', ignoreDuplicates: true });
 }
+// everything coming from the shared database is written by other users: clamp and trim it before it enters the diary
+function cleanShared(r) {
+  const n = (v, max) => { const x = parseFloat(v); return isFinite(x) ? Math.max(0, Math.min(max, x)) : 0; }, t = (v, k) => String(v == null ? '' : v).slice(0, k);
+  const o = { id: t(r.id, 60), name: t(r.name, 160), kcal: n(r.kcal, 950), p: n(r.p, 100), f: n(r.f, 100), c: n(r.c, 100), barcode: t(r.barcode, 32), by: r.created_by || '' };
+  if (n(r.serving, 5000) > 0) o.serving = n(r.serving, 5000);
+  if (r.dish && typeof r.dish === 'object' && Array.isArray(r.dish.items)) o.dish = { cooked: n(r.dish.cooked, 99999), items: r.dish.items.slice(0, 40).map(i => ({ n: t(i && i.n, 160), g: n(i && i.g, 99999), kcal: n(i && i.kcal, 950), p: n(i && i.p, 100), f: n(i && i.f, 100), c: n(i && i.c, 100) })) };
+  return o;
+}
 async function shareFood(f) {
-  if (!sb || !user) return;
-  await sb.from('shared_foods').upsert({ name_key: f.name.trim().toLowerCase(), name: f.name.trim(), kcal: f.kcal, p: f.p, f: f.f, c: f.c, barcode: f.barcode || null }, { onConflict: 'name_key', ignoreDuplicates: true });
+  if (!sb || !user) return false;
+  const row = { name_key: f.name.trim().toLowerCase(), name: f.name.trim(), kcal: f.kcal, p: f.p, f: f.f, c: f.c, barcode: f.barcode || null };
+  const extra = {}; if (f.serving > 0) extra.serving = f.serving; if (f.dish) extra.dish = f.dish;
+  let { error } = await sb.from('shared_foods').upsert({ ...row, ...extra }, { onConflict: 'name_key', ignoreDuplicates: true });
+  if (error && Object.keys(extra).length) ({ error } = await sb.from('shared_foods').upsert(row, { onConflict: 'name_key', ignoreDuplicates: true }));   // serving/dish columns not created yet
+  return !error;
 }
+const findMine = r => S.foods.find(x => (r.barcode && x.barcode === r.barcode) || x.name.toLowerCase() === r.name.toLowerCase());
 function adoptShared(r) {
-  let f = S.foods.find(x => (r.barcode && x.barcode === r.barcode) || x.name.toLowerCase() === r.name.toLowerCase());
-  if (!f) { f = { id: uid(), name: r.name, kcal: +r.kcal, p: +r.p, f: +r.f, c: +r.c, barcode: r.barcode || '' }; S.foods.push(f); save(); }
+  let f = findMine(r);
+  if (!f) { f = { id: uid(), name: r.name, kcal: +r.kcal, p: +r.p, f: +r.f, c: +r.c, barcode: r.barcode || '' }; if (r.serving > 0) f.serving = r.serving; if (r.dish) f.dish = r.dish; S.foods.push(f); save(); }
   return f;
-}
-let shT = null;
-function searchShared(q) {
-  clearTimeout(shT);
-  const box = $('#slist'); if (!box) return;
-  q = q.trim().replace(/[%_,()]/g, ' ');
-  if (!sb || !user || q.length < 2) { box.innerHTML = ''; return; }
-  shT = setTimeout(async () => {
-    const { data } = await sb.from('shared_foods').select('*').ilike('name', '%' + q + '%').limit(15);
-    const b = $('#slist'); if (!b) return;
-    b.innerHTML = data && data.length ? '<div class="dim" style="margin:8px 0 2px">Общая база</div>' + data.map(f => `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div><button class="btn sm ghost">Выбрать</button></div>`).join('') : '';
-    b.querySelectorAll('[data-sid]').forEach(r => r.onclick = () => chooseFood(adoptShared(data.find(x => x.id === r.dataset.sid))));
-  }, 300);
 }
 
 
