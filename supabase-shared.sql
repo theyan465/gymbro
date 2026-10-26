@@ -49,3 +49,8 @@ select n, lower(n), null from unnest(array[
   'Скручивания','Подъём ног в висе','Планка'
 ]) as n
 on conflict (name_key) do nothing;
+
+-- Shared dishes and serving sizes (safe to re-run)
+alter table public.shared_foods add column if not exists serving numeric check (serving is null or serving between 1 and 5000);
+alter table public.shared_foods add column if not exists dish jsonb check (dish is null or (jsonb_typeof(dish) = 'object' and pg_column_size(dish) < 20000));
+create index if not exists shared_foods_created_idx on public.shared_foods (created_at desc);
