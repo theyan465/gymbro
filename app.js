@@ -29,6 +29,25 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 const $ = (s, r = document) => r.querySelector(s);
 // iOS ignores user-scalable=no: block pinch gestures by hand (double-tap zoom is off via touch-action: manipulation)
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+// swipe right from the left edge = back (closes a sheet, or goes up one level in Account / coach pages); drag a sheet down to close it
+(() => {
+  let st = null;
+  const back = () => {
+    const sh = $('#sheet'); if (sh && !sh.hidden) return closeSheet();
+    const b = document.querySelector('#view #cback, #view #back'); if (b) b.click();
+  };
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { st = null; return; }
+    const t = e.touches[0], inSheet = e.target.closest && e.target.closest('#sheet .panel');
+    st = { x: t.clientX, y: t.clientY, edge: t.clientX < 28, drag: !!inSheet && (e.target.closest('.sheet-bar') || inSheet.scrollTop <= 0) && !e.target.closest('input,textarea,select,canvas,.chips'), done: false };
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!st || st.done) return; const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
+    if (st.edge && dx > 70 && Math.abs(dy) < dx * 0.6) { st.done = true; back(); }
+    else if (st.drag && dy > 110 && Math.abs(dx) < dy * 0.5) { st.done = true; closeSheet(); }
+  }, { passive: true });
+  document.addEventListener('touchend', () => { st = null; }, { passive: true });
+})();
 // tapping a filled field selects its content, so typing replaces the old value (not for notes/chat: textareas, dates, passwords)
 document.addEventListener('focusin', e => {
   const el = e.target;
