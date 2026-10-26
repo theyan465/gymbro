@@ -273,6 +273,9 @@ const MT = [['b', 'Завтрак'], ['l', 'Обед'], ['d', 'Ужин'], ['s',
 const autoType = () => { const h = new Date().getHours(); return h < 11 ? 'b' : h < 16 ? 'l' : h < 21 ? 'd' : 's'; };
 let addType = null, foodChoose = null;
 const chooseFood = f => foodChoose ? foodChoose(f) : addMealSheet(f);
+// which meal groups are folded (remembered on this device)
+const foldSet = () => { try { return new Set(JSON.parse(localStorage.getItem('gymbro.fold') || '[]')); } catch { return new Set(); } };
+const folded = k => foldSet().has(k);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
   const mealRow = m => `<div class="row pick ${isNew(m.id)}" data-editmeal="${m.id}"><div class="main">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
@@ -283,14 +286,19 @@ function viewFood() {
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
     ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
     <div class="card"><h2>Приёмы пищи</h2>
-      ${groups.map(([k, n, list]) => `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}</span>${k ? `<button class="btn sm ghost addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}Добавить</button>` : ''}</div>${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div>`).join('')}
+      ${groups.map(([k, n, list]) => `<div class="mgroup ${folded(k) ? 'folded' : ''}"><div class="mgh" data-tog="${k}" role="button" aria-expanded="${!folded(k)}"><i class="chv">${ic('right')}</i><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}${folded(k) && list.length ? ' · ' + list.length : ''}</span>${k ? `<button class="btn sm ghost addto" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}Добавить</button>` : ''}</div><div class="mgbody">${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div></div>`).join('')}
     </div>`;
   $('#dt').onclick = () => {
     const want = !dt.train;
     if (want === autoTrain(day)) delete S.dayType[day]; else S.dayType[day] = want;
     save(); render();
   };
-  document.querySelectorAll('[data-addto]').forEach(b => b.onclick = () => { addType = b.dataset.addto; pickFood(); });
+  document.querySelectorAll('[data-addto]').forEach(b => b.onclick = e => { e.stopPropagation(); addType = b.dataset.addto; pickFood(); });
+  document.querySelectorAll('[data-tog]').forEach(h => h.onclick = () => {
+    const k = h.dataset.tog, g = h.parentElement, on = g.classList.toggle('folded'); h.setAttribute('aria-expanded', String(!on));
+    const set = foldSet(); if (on) set.add(k); else set.delete(k); try { localStorage.setItem('gymbro.fold', JSON.stringify([...set])); } catch { /* ignore */ }
+    const cnt = S.meals.filter(m => m.date === day && (m.type || '') === k).length, sp = h.querySelector('span'); sp.textContent = sp.textContent.replace(/ · \d+$/, '') + (on && cnt ? ' · ' + cnt : '');
+  });
   $('#copy').onclick = () => copyMealsSheet();
   if ($('#copytoday')) $('#copytoday').onclick = () => copyMealsSheet({ target: today(), src: day });
   document.querySelectorAll('[data-delmeal]').forEach(b => b.onclick = e => { e.stopPropagation(); S.meals = S.meals.filter(m => m.id !== b.dataset.delmeal); save(); render(); });
