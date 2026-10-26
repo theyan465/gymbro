@@ -481,8 +481,8 @@ function nutritionEditor(c, draft) {
     const D = c && c.share.nutrition ? cleanClient(c.data) : null, gt = D && D.goals.kcal ? D.goals : { kcal: 2400, p: 150, f: 70, c: 270 }, gr = D && D.goalsRest.kcal ? D.goalsRest : { kcal: 2100, p: 150, f: 65, c: 210 };
     draft = { title: '', goals: { ...gt }, goalsRest: { ...gr }, trainDays: D && D.trainDays.length ? D.trainDays.slice() : [1, 3, 5], meals: [{ type: 'b', text: '' }, { type: 'l', text: '' }, { type: 'd', text: '' }], notes: '' };
   }
-  const fields = (id, g) => `<div class="grid2"><div><label>Ккал</label><input inputmode="numeric" data-${id}="kcal" value="${g.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" data-${id}="p" value="${g.p}"></div>
-    <div><label>Жиры, г</label><input inputmode="numeric" data-${id}="f" value="${g.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" data-${id}="c" value="${g.c}"></div></div><div class="sub dim" data-calc="${id}" style="margin-top:6px"></div>`;
+  const fields = (id, g) => `<div class="grid2 col1"><div><label>Ккал</label><input inputmode="numeric" data-${id}="kcal" value="${g.kcal}"></div><div><label>Жиры, г</label><input inputmode="numeric" data-${id}="f" value="${g.f}"></div>
+    <div><label>Углеводы, г</label><input inputmode="numeric" data-${id}="c" value="${g.c}"></div><div><label>Белки, г</label><input inputmode="numeric" data-${id}="p" value="${g.p}"></div></div><div class="sub dim" data-calc="${id}" style="margin-top:6px"></div>`;
   if (!c && !draft._tpl) draft._tpl = 'new';
   sheet(`<h2 class="sh">${c ? 'План питания · ' + esc(c.name) : 'Шаблон питания'}</h2>
     <label style="margin-top:0">${c ? 'Название плана' : 'Название шаблона'}</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Сушка, 4 недели" maxlength="120">
@@ -657,7 +657,7 @@ function recMeal(c) {
   sheet(`<h2 class="sh">Приём пищи · ${esc(c.name)}</h2>${recDate('rdt')}
     <label>Приём</label><select id="rty">${MT.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
     <label>Название</label><input id="rnm" maxlength="120" placeholder="Например: гречка с курицей" autocomplete="off">
-    <div class="grid2"><div><label>Граммы</label><input inputmode="decimal" id="rg"></div><div><label>Ккал</label><input inputmode="decimal" id="rk"></div><div><label>Жиры, г</label><input inputmode="decimal" id="rf"></div><div><label>Углеводы, г</label><input inputmode="decimal" id="rcc"></div><div><label>Белки, г</label><input inputmode="decimal" id="rpp"></div></div>
+    <div class="grid2 col1"><div><label>Граммы</label><input inputmode="decimal" id="rg"></div><div><label>Ккал</label><input inputmode="decimal" id="rk"></div><div><label>Жиры, г</label><input inputmode="decimal" id="rf"></div><div><label>Углеводы, г</label><input inputmode="decimal" id="rcc"></div><div><label>Белки, г</label><input inputmode="decimal" id="rpp"></div></div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="rok">${ic('right')}Записать</button></div>`, () => {
     $('#rok').onclick = () => {
       const name = $('#rnm').value.trim(), kcal = num($('#rk').value); if (!name || !(kcal > 0)) return toast('Укажите название и калории');
