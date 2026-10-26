@@ -5,7 +5,7 @@ const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
   trainDays: [1, 3, 5], dayType: {}, templates: [],
-  wgoal: { mode: 'hold', rate: 0.5 },
+  wgoal: { mode: 'hold', rate: 0.5 }, schedule: {}, coachNutrition: null, coachTraining: null,
   rest: { on: true, sec: 90, sound: true }, plates: { bar: 20, list: [25, 20, 15, 10, 5, 2.5, 1.25] }, exMuscle: {},
   reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
@@ -74,6 +74,7 @@ const ICONS = {
   disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
   timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   award: '<circle cx="12" cy="8" r="6"/><path d="M15.5 13.5 17 22l-5-3-5 3 1.5-8.5"/>',
 };
 const ic = (n, c = '') => `<svg class="ic ${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -122,7 +123,7 @@ function chart(canvas, series, opts = {}) {
   if (pts.length < 1) { g.fillStyle = '#8b95a3'; g.font = '14px sans-serif'; g.textAlign = 'center'; g.fillText('Нет данных', W / 2, H / 2); return; }
   const L = 38, R = 8, T = 10, B = 20;
   let ys = pts.map(p => p.y).concat(ex.map(p => p.y)), lo = Math.min(...ys), hi = Math.max(...ys);
-  if (opts.zero) lo = 0;
+  if (opts.zero) { lo = 0; if (hi <= 0) hi = 1; }
   if (hi === lo) { hi += 1; lo -= 1; }
   const pad = (hi - lo) * 0.1; if (!opts.zero) { lo -= pad; } hi += pad;
   const xs = pts.map(p => p.x).concat(ex.map(p => p.x)), x0 = Math.min(...xs), x1 = Math.max(...xs) || 1;
@@ -195,6 +196,7 @@ function viewHome() {
       <div class="main"><div class="big">${all}<small> ${all === 1 ? 'день' : all >= 2 && all <= 4 ? 'дня' : 'дней'} подряд</small></div>
         <div class="dim">${longDay(d)} · выполнено ${doneN} из ${app.length}</div></div>
     </div>
+    ${typeof coachHomeCard === 'function' ? coachHomeCard() : ''}
     <div class="habs">${hab('utensils', 'Питание', st(h.nutr), 'nutr', 'food')}${hab('dumbbell', 'Тренировка', st(h.train), 'train', 'train')}${hab('pill', 'Витамины', st(h.vit), 'vit', 'vit')}</div>
     <div class="card week"><h2>Последние 7 дней</h2><div class="wk">${wk.map(k => `<div class="wd1 ${k === tdy ? 'tdy' : ''} ${k === d ? 'sel' : ''}" data-dk="${k}"><small>${WD[wday(k)]}</small><div class="dayc" style="--p:${Math.round(dayFrac(k) * 100)}"><span>${+k.slice(8)}</span></div></div>`).join('')}</div></div>
     <div class="link" data-go="food">${ringCard(t, goalFor(d))}</div>
@@ -204,6 +206,7 @@ function viewHome() {
     <div class="card"><h2><span>Витамины</span><span class="tag">${vdone} / ${due.length}</span></h2>
       ${due.map(v => `<div class="vit ${vitTaken(v, d) ? 'on' : ''} ${lastVit === v.id ? 'pop' : ''}" data-hvit="${v.id}"><span class="chk">${ic('check')}</span><div class="main"><b>${esc(v.name)}</b><div class="sub">${[v.time, v.dose, v.when].filter(Boolean).map(esc).join(' · ') || '&nbsp;'}</div></div></div>`).join('') || `<div class="sub">На ${isToday ? 'сегодня' : 'этот день'} ничего не запланировано</div>`}</div>
     <div class="card"><h2>Вес</h2><div class="wrow"><div>${w0 ? `<div class="big">${w0.weight}<small> кг</small></div><div class="dim">${dayWeight ? (w1 ? (w0.weight - w1.weight > 0 ? '+' : '') + r1(w0.weight - w1.weight) + ' кг с ' + fmtDay(w1.date) : 'замер ' + when) : 'последний замер: ' + fmtDay(w0.date)}</div>` : '<div class="dim">Пока нет замеров</div>'}</div><button class="btn ghost" id="hw">${ic('plus')}Записать</button></div></div>`;
+  if (typeof coachBindHome === 'function') coachBindHome();
   document.querySelectorAll('[data-go]').forEach(e => e.onclick = () => goTab(e.dataset.go, d));
   document.querySelectorAll('[data-dk]').forEach(e => e.onclick = () => { day = e.dataset.dk; animate = true; render(); });
   document.querySelectorAll('[data-hvit]').forEach(r => r.onclick = () => toggleVit(r.dataset.hvit, d));
@@ -273,6 +276,7 @@ function viewFood() {
       <button class="btn ghost" id="ocr">${ic('file')}Этикетка</button>
     </div>
     <div class="${day !== today() && meals.length ? 'actions2 eq' : ''}" style="${day !== today() && meals.length ? '' : 'margin-bottom:12px'}"><button class="btn ghost ${day !== today() && meals.length ? '' : 'full'}" id="copy" style="margin:0">${ic('copy')}Копировать из другого дня</button>${day !== today() && meals.length ? `<button class="btn" id="copytoday">${ic('copy')}Этот день → сегодня</button>` : ''}</div>
+    ${typeof coachFoodCard === 'function' ? coachFoodCard() : ''}
     <div class="card"><h2>Приёмы пищи</h2>
       ${groups.map(([k, n, list]) => `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${list.length ? Math.round(list.reduce((a, m) => a + m.kcal, 0)) + ' ккал' : ''}</span>${k ? `<button class="btn sm ghost icon" data-addto="${k}" aria-label="Добавить в ${n}">${ic('plus')}</button>` : ''}</div>${list.map(mealRow).join('') || '<div class="sub dim" style="padding:2px 0 8px">Пусто</div>'}</div>`).join('')}
     </div>`;
@@ -790,6 +794,7 @@ function viewTrain() {
   const vol = exs.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0);
   $('#view').innerHTML = `
     ${streakChip('train', 'тренировок подряд по плану')}
+    ${typeof coachTrainCard === 'function' ? coachTrainCard(day) : ''}
     <div class="card"><div class="grid2"><div><div class="dim">Объём</div><div class="big">${Math.round(vol)} <small class="dim" style="font-size:14px">кг</small></div></div>
     <div><div class="dim">Упражнений / подходов</div><div class="big">${exs.length} / ${exs.reduce((a, e) => a + e.sets.length, 0)}</div></div></div></div>
     <div class="actions2"><button class="btn" id="addEx">${ic('plus')}Упражнение</button><button class="btn ghost" id="tpls">${ic('list')}Шаблоны</button></div>
@@ -810,6 +815,7 @@ function viewTrain() {
   $('#tpls').onclick = tplList;
   if ($('#savetpl')) $('#savetpl').onclick = saveAsTemplate;
   document.querySelectorAll('[data-usetpl]').forEach(b => b.onclick = () => applyTemplate(b.dataset.usetpl));
+  document.querySelectorAll('[data-plan-start]').forEach(b => b.onclick = () => applyTemplate(b.dataset.planStart));
   document.querySelectorAll('[data-addset]').forEach(b => b.onclick = () => {
     const i = +b.dataset.addset, wv = num($(`[data-w="${i}"]`).value), rv = Math.round(num($(`[data-r="${i}"]`).value));
     if (rv <= 0) return; unlockAudio(); w.exercises[i].sets.push({ w: wv, r: rv }); save(); startRest(S.rest.sec);
@@ -1254,13 +1260,14 @@ function viewMore() {
         ${mi('m-goals', 'bolt', 'Цели питания', `${S.goals.kcal} / ${S.goalsRest.kcal} ккал (тренировка / отдых)`)}
         ${mi('m-days', 'calendar', 'Тренировочные дни', dayNames())}
         ${mi('m-foods', 'utensils', 'Мои продукты', S.foods.length + ' шт.')}
+        ${typeof coachMenu === 'function' ? coachMenu() : ''}
         ${mi('m-train', 'dumbbell', 'Тренировки', `Отдых ${S.rest.on ? S.rest.sec + ' с' : 'выкл.'} · гриф ${S.plates.bar} кг`)}
         ${mi('m-notify', 'bell', 'Уведомления', S.reminders.on ? 'Включены' : 'Выключены')}
         ${mi('m-data', 'db', 'Данные и копия', cloud ? 'Синхронизация, экспорт, импорт' : 'Экспорт и импорт')}
         ${isAdmin ? mi('m-admin', 'crown', 'Администратор', 'Общая база, код доступа') : ''}
       </div>
       ${cloud ? `<div class="card menu">${mi('logout', 'logout', 'Выйти', 'Данные останутся в облаке', 'danger')}</div>` : ''}`;
-    [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['train', 'm-train'], ['notify', 'm-notify'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; nav(); }; });
+    [['goals', 'm-goals'], ['days', 'm-days'], ['foods', 'm-foods'], ['mycoach', 'm-mycoach'], ['coach', 'm-coach'], ['train', 'm-train'], ['notify', 'm-notify'], ['data', 'm-data'], ['admin', 'm-admin']].forEach(([k, id]) => { if ($('#' + id)) $('#' + id).onclick = () => { moreSub = k; if (typeof coachEnter === 'function') coachEnter(k); nav(); }; });
   } else if (moreSub === 'goals') {
     $('#view').innerHTML = back + `<div class="card"><h2><span class="hic">${ic('bolt')}Тренировочный день</span></h2>${goalFields('g', S.goals)}</div>
       <div class="card"><h2><span class="hic">${ic('moon')}День отдыха</span></h2>${goalFields('r', S.goalsRest)}</div><button class="btn full" id="sg">Сохранить</button>`;
@@ -1277,6 +1284,8 @@ function viewMore() {
     $('#view').innerHTML = back + `<div class="card"><h2>Мои продукты (${S.foods.length})</h2>${S.foods.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => `<div class="row"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${f.kcal} ккал · Б${f.p} Ж${f.f} У${f.c} /100г</div></div>${f.dish ? `<button class="btn del" data-editfood="${f.id}" aria-label="Изменить">${ic('edit')}</button>` : ''}<button class="btn del" data-delfood="${f.id}">${ic('x')}</button></div>`).join('') || '<div class="empty">Пусто</div>'}</div>`;
     document.querySelectorAll('[data-editfood]').forEach(b => b.onclick = () => dishEditor(dishDraft(S.foods.find(f => f.id === b.dataset.editfood))));
     document.querySelectorAll('[data-delfood]').forEach(b => b.onclick = () => { S.foods = S.foods.filter(f => f.id !== b.dataset.delfood); save(); render(); });
+  } else if ((moreSub === 'mycoach' || moreSub === 'coach') && typeof coachView === 'function') {
+    coachView(moreSub); return;
   } else if (moreSub === 'train') {
     const secs = [45, 60, 90, 120, 180, 240], allPlates = [25, 20, 15, 10, 5, 2.5, 1.25, 0.5];
     $('#view').innerHTML = back + `<div class="card"><h2>Таймер отдыха</h2>
@@ -1421,7 +1430,7 @@ async function cloudInit() {
     sb = window.supabase.createClient(CFG.url, CFG.anonKey);
     try { const { data } = await sb.auth.getSession(); user = data.session ? data.session.user : null; } catch { return; }
     sb.auth.onAuthStateChange((_e, sess) => { user = sess ? sess.user : null; });
-    if (user) { await pull(); loadSharedEx(); checkAdmin(); syncPush(); }
+    if (user) { await pull(); loadSharedEx(); checkAdmin(); syncPush(); if (typeof coachInit === 'function') coachInit(); }
   } finally { authReady = true; render(); }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && user) pull(); });
@@ -1454,7 +1463,7 @@ function bindAccount() {
     if (error) return err(mode === 'up' && /database error|unexpected/i.test(error.message) ? 'Неверный код доступа' : error.message);
     if (!data.session) { authMode = 'in'; return err('Проверьте почту и подтвердите email, затем войдите.'); }
     authDraft = { em: '', pw: '' }; authMode = 'in';
-    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); syncPush(); render();
+    user = data.session.user; await pull(); loadSharedEx(); checkAdmin(); syncPush(); if (typeof coachInit === 'function') coachInit(); render();
   };
   if ($('#login')) $('#login').onclick = () => auth('in');
   if ($('#signup')) $('#signup').onclick = () => auth('up');
@@ -1463,7 +1472,7 @@ function bindAccount() {
   if ($('#syncnow')) $('#syncnow').onclick = async () => { await push(); await pull(); };
   if ($('#logout')) $('#logout').onclick = async () => {
     if (!confirm('Выйти? Данные останутся в облаке, с устройства они удалятся.')) return;
-    await push(); await disablePush(true); await sb.auth.signOut(); user = null; isAdmin = false;
+    await push(); await disablePush(true); await sb.auth.signOut(); user = null; isAdmin = false; if (typeof coachReset === 'function') coachReset();
     S = fresh(); moreSub = null; localStorage.removeItem(KEY); localStorage.removeItem(SYNC_KEY); syncState = ''; render();
   };
 }
