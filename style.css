@@ -529,3 +529,11 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 html, body { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 button, a, .row, .card, .chip { touch-action: manipulation; }
 input, select, textarea { font-size: 16px !important; }
+
+/* folded meal: totals stay visible */
+.mcard .mfold { display: none; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 4px; padding: 4px 0 8px 30px; font-size: 12.5px; font-weight: 600; }
+.mcard.folded .mfold { display: grid; }
+.mcard .mfold b { font-size: 14px; font-weight: 800; margin-left: 2px; }
+.mcard .mfold .k { color: var(--dim); } .mcard .mfold .k b { color: var(--txt); }
+.mcard .mfold .cf { color: var(--f); } .mcard .mfold .cc { color: var(--c); } .mcard .mfold .cp { color: var(--p); }
+.mcard.folded .mkc { display: none; }
