@@ -891,6 +891,16 @@ function getWorkout(create) {
   return w;
 }
 
+// exercises marked as finished are shown compact; tap to open them again (and edit sets)
+const openEx = new Set();
+function editSetSheet(w, i, j) {
+  const e = w.exercises[i], st = e && e.sets[j]; if (!st) return;
+  sheet(`<h2 class="sh">Подход ${j + 1} · ${esc(e.name)}</h2><div class="grid2"><div><label style="margin-top:0">Вес, кг</label><input id="sw" inputmode="decimal" value="${st.w}"></div><div><label style="margin-top:0">Повт.</label><input id="sr" inputmode="numeric" value="${st.r}"></div></div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="sok">Сохранить</button><button class="btn ghost danger" id="sdel">Удалить</button></div>`, () => {
+    $('#sok').onclick = () => { const r = Math.round(num($('#sr').value)); if (r <= 0) return $('#sr').focus(); st.w = num($('#sw').value); st.r = r; save(); okBtn($('#sok'), () => { closeSheet(); render(); }, 'Сохранено'); };
+    $('#sdel').onclick = () => { e.sets.splice(j, 1); save(); closeSheet(); render(); };
+  });
+}
 function viewTrain() {
   const w = getWorkout(false), exs = w ? w.exercises : [];
   const vol = exs.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0);
@@ -905,10 +915,12 @@ function viewTrain() {
       const hist = exHistory(e.name, day)[0], prev = bestE1(e.name, day);
       const best = Math.max(0, ...e.sets.map(s => e1rm(s.w, s.r)));
       const nxt = (e.plan && e.plan[e.sets.length]) || e.sets[e.sets.length - 1] || (hist && hist.ex.sets[0]) || { w: '', r: '' };
-      return `<div class="card ${isNew('ex' + i)}"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><button class="btn del" data-delex="${i}">${ic('x')}</button></h2>
+      const open = !e.done || openEx.has(day + ':' + i), cur = !e.done && exs.findIndex(x => !x.done) === i && exs.some(x => x.done), evol = Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0));
+      if (!open) return `<div class="card exdone ${isNew('ex' + i)}" data-reopen="${i}" role="button"><h2><span class="exok">${ic('check')}${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><small>${e.sets.length} ${plural(e.sets.length, ['подход', 'подхода', 'подходов'])} · ${evol} кг</small></h2></div>`;
+      return `<div class="card ${cur ? 'excur' : ''} ${isNew('ex' + i)}"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}${e.done ? '<span class="tag train">Завершено</span>' : ''}</span><span class="exbtns">${e.done ? `<button class="btn sm ghost" data-fold="${i}">Свернуть</button>` : `<button class="btn sm ghost" data-finish="${i}">${ic('check')}Завершить</button>`}<button class="btn del" data-delex="${i}">${ic('x')}</button></span></h2>
         ${e.plan && e.plan.length ? `<div class="plan"><span class="dim">План:</span>${e.plan.map((x, j) => `<span class="pl ${j < e.sets.length ? 'ok' : ''}">${x.w}×${x.r}</span>`).join('')}</div>` : ''}
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
-        ${e.sets.map((s, j) => `<div class="row ${isNew(i + '.' + j)}"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
+        ${e.sets.map((s, j) => `<div class="row pick ${isNew(i + '.' + j)}" data-editset="${i}.${j}"><div class="main"><b>${j + 1}.</b> ${s.w} кг × ${s.r}</div><span class="dim">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
         <div class="grid4" style="grid-template-columns:1fr 1fr auto auto;margin-top:8px"><input inputmode="decimal" placeholder="Вес" data-w="${i}" value="${nxt.w}"><input inputmode="numeric" placeholder="Повт." data-r="${i}" value="${nxt.r}"><button class="btn ghost icon" data-plate="${i}" aria-label="Калькулятор блинов">${ic('disc')}</button><button class="btn" data-addset="${i}">+</button></div>
         <div class="sub dim" style="margin-top:6px">Объём: ${Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0))} кг</div></div>`;
     }).join('') || '<div class="empty">В этот день тренировок нет</div>'}
@@ -927,7 +939,15 @@ function viewTrain() {
     const i = +b.dataset.plate, inp = $(`[data-w="${i}"]`);
     plateSheet(inp.value, v => { inp.value = v; });
   });
-  document.querySelectorAll('[data-delset]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.delset.split('.').map(Number); w.exercises[i].sets.splice(j, 1); save(); render(); });
+  document.querySelectorAll('[data-delset]').forEach(b => b.onclick = e => { e.stopPropagation(); const [i, j] = b.dataset.delset.split('.').map(Number); w.exercises[i].sets.splice(j, 1); save(); render(); });
+  document.querySelectorAll('[data-editset]').forEach(r => r.onclick = () => { const [i, j] = r.dataset.editset.split('.').map(Number); editSetSheet(w, i, j); });
+  document.querySelectorAll('[data-finish]').forEach(b => b.onclick = () => {
+    const i = +b.dataset.finish, e = w.exercises[i]; if (!e.sets.length) return toast('Добавьте хотя бы один подход');
+    e.done = true; openEx.delete(day + ':' + i); save(); stopRest(); toast('Упражнение завершено'); render();
+    const c = document.querySelector('.excur'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.querySelectorAll('[data-fold]').forEach(b => b.onclick = () => { openEx.delete(day + ':' + b.dataset.fold); render(); });
+  document.querySelectorAll('[data-reopen]').forEach(c => c.onclick = () => { openEx.add(day + ':' + c.dataset.reopen); render(); });
   document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { w.exercises.splice(+b.dataset.delex, 1); save(); render(); } });
 }
 const BASE_EX = ['Жим лёжа', 'Жим лёжа на наклонной скамье', 'Жим гантелей лёжа', 'Жим гантелей на наклонной скамье', 'Разводка гантелей', 'Отжимания', 'Отжимания на брусьях',
