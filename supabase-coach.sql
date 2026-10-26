@@ -40,11 +40,13 @@ create table if not exists public.coach_links (
   share_body boolean not null default true,
   share_vitamins boolean not null default true,
   share_photos boolean not null default false,
+  share_write boolean not null default false,
   created_at timestamptz not null default now(),
   ended_at timestamptz,
   ended_by uuid,
   check (coach_id <> client_id)
 );
+alter table public.coach_links add column if not exists share_write boolean not null default false;
 create unique index if not exists coach_links_one_active_per_client on public.coach_links (client_id) where status = 'active';
 create index if not exists coach_links_coach_idx on public.coach_links (coach_id) where status = 'active';
 alter table public.coach_links enable row level security;
@@ -99,6 +101,23 @@ alter table public.coach_messages enable row level security;
 drop policy if exists "messages members read" on public.coach_messages;
 create policy "messages members read" on public.coach_messages for select to authenticated using (
   exists (select 1 from public.coach_links l where l.id = link_id and (l.coach_id = auth.uid() or l.client_id = auth.uid())));
+
+-- entries a coach records for a client (offline sessions); the client's app merges them into the account data
+create table if not exists public.coach_entries (
+  id uuid primary key default gen_random_uuid(),
+  link_id uuid not null references public.coach_links(id) on delete cascade,
+  coach_id uuid not null references auth.users(id) on delete cascade,
+  client_id uuid not null references auth.users(id) on delete cascade,
+  kind text not null check (kind in ('workout', 'meal', 'body')),
+  payload jsonb not null check (octet_length(payload::text) < 50000),
+  created_at timestamptz not null default now(),
+  applied_at timestamptz
+);
+create index if not exists coach_entries_pending_idx on public.coach_entries (client_id) where applied_at is null;
+create index if not exists coach_entries_link_idx on public.coach_entries (link_id, created_at desc);
+alter table public.coach_entries enable row level security;
+drop policy if exists "entries members read" on public.coach_entries;
+create policy "entries members read" on public.coach_entries for select to authenticated using (coach_id = auth.uid() or client_id = auth.uid());
 
 -- ---------- helpers (not exposed through the API) ----------
 create or replace function private.filter_client_data(d jsonb, sn boolean, st boolean, sb boolean, sv boolean, sp boolean, p_days int) returns jsonb
@@ -199,7 +218,7 @@ begin
   return jsonb_build_object('link_id', l.id, 'coach_id', l.coach_id,
     'coach_name', coalesce((select nullif(display_name, '') from public.profiles where user_id = l.coach_id), (select email from public.profiles where user_id = l.coach_id), 'Тренер'),
     'since', l.created_at,
-    'share', jsonb_build_object('nutrition', l.share_nutrition, 'training', l.share_training, 'body', l.share_body, 'vitamins', l.share_vitamins, 'photos', l.share_photos),
+    'share', jsonb_build_object('nutrition', l.share_nutrition, 'training', l.share_training, 'body', l.share_body, 'vitamins', l.share_vitamins, 'photos', l.share_photos, 'write', l.share_write),
     'unread', (select count(*) from public.coach_messages m where m.link_id = l.id and m.sender_id <> me and m.read_at is null),
     'new_plans', (select count(*) from public.coach_plans p where p.link_id = l.id and p.status = 'sent'));
 end $$;
@@ -212,7 +231,8 @@ begin
     select jsonb_build_object(
       'link_id', l.id, 'client_id', l.client_id,
       'name', coalesce(nullif(p.display_name, ''), p.email, 'Подопечный'), 'email', p.email, 'since', l.created_at,
-      'share', jsonb_build_object('nutrition', l.share_nutrition, 'training', l.share_training, 'body', l.share_body, 'vitamins', l.share_vitamins, 'photos', l.share_photos and l.share_body),
+      'share', jsonb_build_object('nutrition', l.share_nutrition, 'training', l.share_training, 'body', l.share_body, 'vitamins', l.share_vitamins, 'photos', l.share_photos and l.share_body, 'write', l.share_write),
+      'pending', (select count(*) from public.coach_entries e where e.link_id = l.id and e.applied_at is null),
       'updated_at', u.updated_at,
       'unread', (select count(*) from public.coach_messages m where m.link_id = l.id and m.sender_id <> me and m.read_at is null),
       'data', private.filter_client_data(u.data, l.share_nutrition, l.share_training, l.share_body, l.share_vitamins, l.share_photos, d)) as item
@@ -267,6 +287,40 @@ begin
     values (p.link_id, me, (case p_status when 'applied' then 'Принял план «' else 'Отклонил план «' end) || p.title || '»', p_plan);
 end $$;
 
+-- ---------- coach records for the client ----------
+create or replace function public.set_write_access(p_link uuid, p_allow boolean) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.coach_links set share_write = coalesce(p_allow, false) where id = p_link and client_id = auth.uid() and status = 'active';
+  if not found then raise exception 'link not found'; end if;
+end $$;
+
+create or replace function public.coach_add_entries(p_link uuid, p_entries jsonb) returns int language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); l public.coach_links; e jsonb; n int := 0; k text;
+begin
+  select * into l from public.coach_links where id = p_link and coach_id = me and status = 'active';
+  if not found then raise exception 'link not found'; end if;
+  if not l.share_write then raise exception 'client has not allowed recording'; end if;
+  if jsonb_typeof(p_entries) <> 'array' or jsonb_array_length(p_entries) = 0 or jsonb_array_length(p_entries) > 40 then raise exception 'bad entries'; end if;
+  for e in select * from jsonb_array_elements(p_entries) loop
+    k := e->>'kind';
+    if k not in ('workout', 'meal', 'body') or jsonb_typeof(e->'data') <> 'object' then raise exception 'bad entry'; end if;
+    insert into public.coach_entries (link_id, coach_id, client_id, kind, payload) values (p_link, me, l.client_id, k, e->'data');
+    n := n + 1;
+  end loop;
+  insert into public.coach_messages (link_id, sender_id, body) values (p_link, me, 'Тренер записал за вас: ' || n || ' шт.');
+  return n;
+end $$;
+
+create or replace function public.pending_entries() returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'data', e.payload, 'created_at', e.created_at) order by e.created_at), '[]'::jsonb)
+  from public.coach_entries e where e.client_id = auth.uid() and e.applied_at is null
+$$;
+
+create or replace function public.ack_entries(p_ids uuid[]) returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.coach_entries set applied_at = now() where client_id = auth.uid() and applied_at is null and id = any(p_ids);
+end $$;
+
 -- ---------- storage: a coach may read photos of clients who shared them ----------
 drop policy if exists "photos coach select" on storage.objects;
 create policy "photos coach select" on storage.objects for select to authenticated using (
@@ -288,6 +342,10 @@ revoke all on function public.send_message(uuid, text, date) from public, anon;
 revoke all on function public.mark_read(uuid) from public, anon;
 revoke all on function public.send_plan(uuid, text, text, text, jsonb) from public, anon;
 revoke all on function public.respond_plan(uuid, text) from public, anon;
+revoke all on function public.set_write_access(uuid, boolean) from public, anon;
+revoke all on function public.coach_add_entries(uuid, jsonb) from public, anon;
+revoke all on function public.pending_entries() from public, anon;
+revoke all on function public.ack_entries(uuid[]) from public, anon;
 grant execute on function public.create_invite() to authenticated;
 grant execute on function public.peek_invite(text) to authenticated;
 grant execute on function public.redeem_invite(text, boolean, boolean, boolean, boolean, boolean) to authenticated;
@@ -300,3 +358,7 @@ grant execute on function public.send_message(uuid, text, date) to authenticated
 grant execute on function public.mark_read(uuid) to authenticated;
 grant execute on function public.send_plan(uuid, text, text, text, jsonb) to authenticated;
 grant execute on function public.respond_plan(uuid, text) to authenticated;
+grant execute on function public.set_write_access(uuid, boolean) to authenticated;
+grant execute on function public.coach_add_entries(uuid, jsonb) to authenticated;
+grant execute on function public.pending_entries() to authenticated;
+grant execute on function public.ack_entries(uuid[]) to authenticated;
