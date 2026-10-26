@@ -707,7 +707,7 @@ async function lookupBarcode(code) {
 
 const RU_STATUS = { 'loading tesseract core': 'Загружаю модуль', 'initializing tesseract': 'Запускаю', 'loading language traineddata': 'Загружаю язык', 'initializing api': 'Подготовка', 'recognizing text': 'Читаю текст' };
 // OCR of a nutrition label (Tesseract.js "best" models, loaded on demand; needs internet on first use, then cached)
-const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0_best';
+const TESS_LANG_PATH = 'https://tessdata.projectnaptha.com/4.0.0_fast';
 function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
 }
@@ -768,49 +768,89 @@ function parseLabel(text) {
     c: first(/углевод\S*|carbohydrate\S*|carbs?\b|kohlenhydrate|glucides|hidratos|węglowodany|вуглевод\S*/, SKIP_CARB),
   };
 }
-// combine several OCR passes; when a macro looks like it lost its decimal point, pick the reading that best matches the calories
+// combine several OCR passes. Each number gets alternative readings (lost decimal point, "g" read as 9, lost leading 1) and the
+// combination that best matches kcal ≈ 4·P + 4·C + 9·F wins; when one macro is unreadable it is derived from the calories.
 function mergeLabels(list) {
-  const kcal = list.map(x => x.kcal).find(Boolean) || 0, pick = k => { const c = list.map(x => x[k]).filter(Boolean); return c.find(o => !o.int) || c[0] || null; };
-  const raw = { p: pick('p'), f: pick('f'), c: pick('c') };
-  const cand = o => { if (!o) return [0]; const a = []; if (o.v <= 100) a.push(o.v); if (o.int && o.v >= 10 && o.v / 10 <= 100) a.push(r1(o.v / 10)); return a.length ? a : [0]; };
+  const cands = (arr, kind) => {
+    const out = new Map(), seen = new Map(), max = kind === 'k' ? 950 : 100;
+    const add = (v, pen) => { v = Math.round(v * 10) / 10; if (v >= 0 && v <= max) { seen.set(v, (seen.get(v) || 0) + 1); if (!out.has(v) || out.get(v) > pen) out.set(v, pen); } };
+    arr.forEach(o => {
+      const v = typeof o === 'number' ? o : o.v, int = typeof o === 'number' ? kind === 'k' : o.int;
+      add(v, 0);
+      if (kind !== 'k' && v >= 10 && v % 10 === 9) add(Math.floor(v / 10), 1.2);   // the unit "g" read as a 9: "219" -> 21, "19" -> 1
+      if (kind !== 'k' && int && v >= 10) add(v / 10, 2.2);                           // lost decimal point
+      if (kind === 'k' && v > 0 && v < 100) { add(v + 100, 2.2); add(v + 200, 3.4); } // lost leading 1
+    });
+    return [...out].map(([v, pen]) => [v, pen - 0.35 * Math.min(3, (seen.get(v) || 1) - 1)]);   // agreeing passes make a reading more likely
+  };
+  const K = cands(list.map(x => x.kcal).filter(Boolean), 'k'), M = {};
+  ['p', 'f', 'c'].forEach(k => { M[k] = cands(list.map(x => x[k]).filter(Boolean), k); });
+  const kc = K.length ? K : [[0, 0]], opt = k => M[k].length ? M[k] : [[null, 0]], W = { p: 4, f: 9, c: 4 };
   let best = null;
-  for (const p of cand(raw.p)) for (const f of cand(raw.f)) for (const c of cand(raw.c)) {
-    const moved = (raw.p && p !== raw.p.v) + (raw.f && f !== raw.f.v) + (raw.c && c !== raw.c.v);
-    const score = (kcal ? Math.abs(4 * p + 4 * c + 9 * f - kcal) : 0) + moved * 3;
-    if (!best || score < best.score) best = { p, f, c, score };
+  for (const [k, pk] of kc) for (const [p, pp] of opt('p')) for (const [f, pf] of opt('f')) for (const [c, pc] of opt('c')) {
+    const m = { p, f, c }, miss = ['p', 'f', 'c'].filter(x => m[x] === null); let pen = pk + pp + pf + pc, kcal = k, derived = null;
+    if (miss.length === 1 && k) {
+      const known = ['p', 'f', 'c'].reduce((a, x) => a + (m[x] === null ? 0 : m[x] * W[x]), 0), d = (k - known) / W[miss[0]];
+      if (d < -2 || d > 100) continue; m[miss[0]] = Math.max(0, Math.round(d * 10) / 10); derived = miss[0]; pen += 1.5;
+    } else if (miss.length) { m.p = m.p || 0; m.f = m.f || 0; m.c = m.c || 0; pen += 3 * miss.length; }
+    const en = 4 * m.p + 4 * m.c + 9 * m.f;
+    if (!kcal && en) kcal = Math.round(en); else if (kcal && !derived) pen += Math.abs(en - kcal) / Math.max(kcal, 40) * 40;
+    if (!best || pen < best.pen) best = { pen, kcal, p: m.p, f: m.f, c: m.c, derived };
   }
-  const out = { kcal, p: best.p, f: best.f, c: best.c, serving: list.map(x => x.serving).find(Boolean) || 0, per100: list.some(x => x.per100) };
-  if (!out.kcal && (out.p || out.f || out.c)) out.kcal = Math.round(4 * out.p + 4 * out.c + 9 * out.f);
-  return out;
+  best = best || { kcal: 0, p: 0, f: 0, c: 0, derived: null };
+  return { kcal: Math.round(best.kcal), p: best.p, f: best.f, c: best.c, derived: best.derived, serving: list.map(x => x.serving).find(Boolean) || 0, per100: list.some(x => x.per100) };
 }
+// find the nutrition table among the recognized words: the box around the label words (calories, protein, fat, carbs, serving)
+const TABLE_WORDS = /^(calories?|energy|energi\S*|energie|kcal|ккал|энерг\S*|белк\S*|protein\S*|eiwei\S*|жир\S*|fat|fett|углевод\S*|carbohydrates?|carbs?|kohlenhydrate\S*|bia[łl]k\S*|t[łl]uszcz\S*|w[ęe]glowodany|вуглевод\S*|білк\S*|serving|порци\S*|porcja)$/i;
+function tableBox(words, W, H) {
+  const hit = words.filter(w => w.bbox && TABLE_WORDS.test(String(w.text).replace(/[^\p{L}]/gu, '')) && w.confidence > 25);
+  if (hit.length < 2) return null;
+  const hs = hit.map(w => w.bbox.y1 - w.bbox.y0).sort((a, b) => a - b), lh = hs[hs.length >> 1] || 20;
+  let x0 = Math.min(...hit.map(w => w.bbox.x0)), x1 = Math.max(...hit.map(w => w.bbox.x1)), y0 = Math.min(...hit.map(w => w.bbox.y0)), y1 = Math.max(...hit.map(w => w.bbox.y1));
+  x1 = x0 + (x1 - x0) * 3.1;
+  return [Math.max(0, x0 - lh * 1.5), Math.max(0, y0 - lh * 2.2), Math.min(W, x1 + lh), Math.min(H, y1 + lh * 2.2)];
+}
+const cropCanvas = (cv, [x0, y0, x1, y1], maxW = 1800) => {
+  const w = Math.max(10, x1 - x0), h = Math.max(10, y1 - y0), sc = Math.min(3, Math.max(1, maxW / w)), c = document.createElement('canvas');
+  c.width = Math.round(w * sc); c.height = Math.round(h * sc); const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(cv, x0, y0, w, h, 0, 0, c.width, c.height); return c;
+};
+const OCR_AUTO = 'eng+pol+rus';
 function ocrLabel(pre = {}) {
-  const lang0 = localStorage.getItem('gymbro.ocrLang') || 'rus+eng';
-  const langs = [['rus+eng', 'Русский + English'], ['eng', 'English'], ['eng+deu', 'English + Deutsch'], ['eng+fra', 'English + Français'], ['eng+spa', 'English + Español'], ['eng+pol', 'English + Polski'], ['eng+ukr', 'English + Українська'], ['eng+tur', 'English + Türkçe'], ['eng+ita', 'English + Italiano']];
+  const lang0 = localStorage.getItem('gymbro.ocrLang') || OCR_AUTO;
+  const langs = [[OCR_AUTO, 'Авто: English, Polski, Русский'], ['eng+ukr+rus', 'English + Українська + Русский'], ['eng+deu', 'English + Deutsch'], ['eng+fra', 'English + Français'], ['eng+spa', 'English + Español'], ['eng+ita', 'English + Italiano'], ['eng+tur', 'English + Türkçe'], ['eng', 'English']];
   sheet(`<h2 class="sh">Этикетка КБЖУ</h2>
     <div class="dim small">Таблица пищевой ценности («на 100 г» или «на порцию») должна занимать почти весь кадр: крупно, ровно, без бликов.</div>
     ${photoPicker('op')}
-    <label>Язык этикетки</label><select id="lang">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <details class="raw" style="margin-top:10px"><summary>Язык этикетки</summary><select id="lang" style="margin-top:8px">${langs.map(([v, n]) => `<option value="${v}" ${v === lang0 ? 'selected' : ''}>${n}</option>`).join('')}</select></details>
     <div id="prog" hidden style="margin-top:14px"><div class="bar"><i id="pbar" style="width:4%"></i></div></div>
     <div id="msg" class="dim small" style="margin:10px 0 2px"></div>
-    <div class="dim small" style="margin-top:6px">Распознавание идёт на телефоне. При первом запуске нужен интернет (до ~30 МБ языковых данных, дальше они сохраняются).</div>`, () => {
+    <div class="dim small" style="margin-top:6px">Язык определяется сам. Распознавание идёт на телефоне. При первом запуске нужен интернет (около 10 МБ языковых данных, дальше они сохраняются).</div>`, () => {
     let busy = false;
     bindPicker('op', async f => {
       if (busy) return; busy = true; $('#sheet .panel').classList.add('busy'); $('#prog').hidden = false;
       const setP = v => { $('#pbar').style.width = Math.max(4, Math.min(100, v)) + '%'; };
-      const msg = $('#msg'), lang = $('#lang').value; localStorage.setItem('gymbro.ocrLang', lang);
+      const msg = $('#msg'), lang = $('#lang').value; if (lang === OCR_AUTO) localStorage.removeItem('gymbro.ocrLang'); else localStorage.setItem('gymbro.ocrLang', lang);
       msg.textContent = 'Готовлю изображение…'; setP(6);
       try {
         const prep = await prepLabel(f);
         if (typeof Tesseract === 'undefined') { msg.textContent = 'Загружаю распознавание…'; setP(12); await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js'); }
-        const worker = await Tesseract.createWorker(lang, 1, { langPath: TESS_LANG_PATH, logger: m => { if (m.status) { msg.textContent = (RU_STATUS[m.status] || m.status) + ' ' + Math.round((m.progress || 0) * 100) + '%'; setP(15 + (m.progress || 0) * 80); } } });
+        let pass = 0; const PASSES = 5;
+        const worker = await Tesseract.createWorker(lang, 1, { langPath: TESS_LANG_PATH, logger: m => { if (m.status) { msg.textContent = (RU_STATUS[m.status] || m.status) + ' ' + Math.round((m.progress || 0) * 100) + '%'; setP(12 + (pass + (m.progress || 0)) / PASSES * 84); } } });
         const texts = [];
         try {
-          await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' }); texts.push((await worker.recognize(prep.bin)).data.text);
-          await worker.setParameters({ tessedit_pageseg_mode: '11' }); texts.push((await worker.recognize(prep.gray)).data.text);
+          const run = async (cv, psm) => { await worker.setParameters({ tessedit_pageseg_mode: String(psm), preserve_interword_spaces: '1' }); const r = (await worker.recognize(cv)).data; pass++; return r; };
+          const first = await run(prep.gray, 11);                                        // 1) whole photo: find the table
+          const box = tableBox(first.words || [], prep.gray.width, prep.gray.height);
+          if (box) {                                                                       // 2) the table alone, enlarged: much better digits
+            const g = cropCanvas(prep.gray, box), bn = cropCanvas(prep.bin, box);
+            texts.push((await run(bn, 6)).text, (await run(g, 6)).text, (await run(g, 4)).text);
+          } else { pass += 3; }
+          texts.push((await run(prep.bin, 6)).text, first.text);
         } finally { await worker.terminate(); }
-        const res = mergeLabels(texts.map(parseLabel));
+        const res = mergeLabels(texts.map(parseLabel)), NM = { p: 'Белки', f: 'Жиры', c: 'Углеводы' };
         const keep = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { keep[k] = res[k] || pre[k] || ''; });
-        foodForm({ ...pre, ...keep, serving: res.serving || pre.serving || '', mode: res.serving && !res.per100 ? 'serv' : (pre.mode || '100'), name: pre.name || '', note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.', raw: texts.join('\n———\n') });
+        foodForm({ ...pre, ...keep, serving: res.serving || pre.serving || '', mode: res.serving && !res.per100 ? 'serv' : (pre.mode || '100'), name: pre.name || '',
+          note: 'Проверьте цифры: распознавание может путать 1 и 7, точки и запятые.' + (res.derived ? ' ' + NM[res.derived] + ' рассчитаны по калориям.' : ''), raw: texts.join('\n———\n') });
       } catch (err) { msg.textContent = 'Не удалось распознать: ' + (err && err.message || err); busy = false; $('#sheet .panel').classList.remove('busy'); $('#prog').hidden = true; }
     });
   });
