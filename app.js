@@ -27,6 +27,13 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 // ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
+// tapping a filled field selects its content, so typing replaces the old value (not for notes/chat: textareas, dates, passwords)
+document.addEventListener('focusin', e => {
+  const el = e.target;
+  if (!el || el.tagName !== 'INPUT' || el.readOnly || el.disabled || !/^(text|number|search|tel|)$/.test(el.type || '') || !el.value) return;
+  const sel = () => { try { el.setSelectionRange(0, el.value.length); } catch { try { el.select(); } catch { /* ignore */ } } };
+  sel(); setTimeout(sel, 30);
+});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : 0; };
