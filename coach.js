@@ -162,7 +162,7 @@ const wdNames = arr => WD_ORDER.filter(d => (arr || []).includes(d)).map(d => WD
 function planBody(p) {
   const P = p.payload || {};
   if (p.kind === 'nutrition') {
-    const row = (t, g) => g ? `<div class="prow"><b>${t}</b><span>${g.kcal} ккал · Б ${g.p} · Ж ${g.f} · У ${g.c}</span></div>` : '';
+    const row = (t, g) => g ? `<div class="prow"><b>${t}</b><span>${g.kcal} ккал · Ж ${g.f} · У ${g.c} · Б ${g.p}</span></div>` : '';
     return row('Тренировочный день', P.goals) + row('День отдыха', P.goalsRest) + (P.trainDays ? `<div class="prow"><b>Тренировочные дни</b><span>${wdNames(P.trainDays)}</span></div>` : '') +
       ((P.meals || []).filter(m => m.text).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(m => m.text).map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span><span translate="no">${esc(m.text)}</span></span></div>`).join('')}` : '') +
       (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
@@ -381,9 +381,9 @@ function coachClientView() {
         return { ring: ringCard(sumMeals(d), goalFor(d)), days, meals, info, g: goalFor(d), series: Array.from({ length: 14 }, (_, i) => { const k = shiftDay(t, -13 + i); return { x: ts(k), y: sumMeals(k).kcal }; }) };
       });
       body = `<div class="dnav"><button class="btn sm ghost icon" data-dd="-1">${ic('left')}</button><b>${esc(dayLabel(d))}${d !== t ? '' : ''}</b><button class="btn sm ghost icon" data-dd="1">${ic('right')}</button></div>
-        <div class="sub dim" style="margin:-4px 0 10px;text-align:center">${R.info.train ? 'Тренировочный день' : 'День отдыха'} · цель ${Math.round(R.g.kcal)} ккал · Б${Math.round(R.g.p)} Ж${Math.round(R.g.f)} У${Math.round(R.g.c)}</div>
+        <div class="sub dim" style="margin:-4px 0 10px;text-align:center">${R.info.train ? 'Тренировочный день' : 'День отдыха'} · цель ${Math.round(R.g.kcal)} ккал · Ж${Math.round(R.g.f)} У${Math.round(R.g.c)} Б${Math.round(R.g.p)}</div>
         ${R.ring}
-        <div class="card"><h2>Приёмы пищи</h2>${[...MT, ['', 'Без категории']].map(([k, n]) => { const l = R.meals.filter(m => (m.type || '') === k); return l.length ? `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${Math.round(l.reduce((a, m) => a + m.kcal, 0))} ккал</span></div>${l.map(m => `<div class="row"><div class="main">${esc(m.name)}<div class="sub">${Math.round(m.g)} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b></div>`).join('')}</div>` : ''; }).join('') || '<div class="empty">В этот день записей нет</div>'}
+        <div class="card"><h2>Приёмы пищи</h2>${[...MT, ['', 'Без категории']].map(([k, n]) => { const l = R.meals.filter(m => (m.type || '') === k); return l.length ? `<div class="mgroup"><div class="mgh"><b>${n}</b><span>${Math.round(l.reduce((a, m) => a + m.kcal, 0))} ккал</span></div>${l.map(m => `<div class="row"><div class="main">${esc(m.name)}<div class="sub">${Math.round(m.g)} г · Ж${r1(m.f)} У${r1(m.c)} Б${r1(m.p)}</div></div><b>${Math.round(m.kcal)}</b></div>`).join('')}</div>` : ''; }).join('') || '<div class="empty">В этот день записей нет</div>'}
           <button class="btn ghost full" id="cmt" style="margin-top:10px">${ic('right')}Комментарий к этому дню</button></div>
         <div class="card"><h2>Неделя до ${esc(dayLabel(d).toLowerCase())}</h2>${R.days.map(x => { const p = x.g.kcal ? Math.min(130, x.t.kcal / x.g.kcal * 100) : 0; return `<div class="wrow2" data-cday="${x.k}"><span>${WD[wday(x.k)]} ${+x.k.slice(8)}</span><div class="bar"><i style="width:${Math.min(100, p)}%;${p > 105 ? 'background:var(--bad)' : ''}"></i></div><em>${Math.round(x.t.kcal)}</em></div>`; }).join('')}</div>
         <div class="card"><h2>Калории за 14 дней</h2><canvas class="chart" id="cchart"></canvas></div>`;
@@ -657,7 +657,7 @@ function recMeal(c) {
   sheet(`<h2 class="sh">Приём пищи · ${esc(c.name)}</h2>${recDate('rdt')}
     <label>Приём</label><select id="rty">${MT.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
     <label>Название</label><input id="rnm" maxlength="120" placeholder="Например: гречка с курицей" autocomplete="off">
-    <div class="grid2"><div><label>Граммы</label><input inputmode="decimal" id="rg"></div><div><label>Ккал</label><input inputmode="decimal" id="rk"></div><div><label>Белки, г</label><input inputmode="decimal" id="rpp"></div><div><label>Жиры, г</label><input inputmode="decimal" id="rf"></div><div><label>Углеводы, г</label><input inputmode="decimal" id="rcc"></div></div>
+    <div class="grid2"><div><label>Граммы</label><input inputmode="decimal" id="rg"></div><div><label>Ккал</label><input inputmode="decimal" id="rk"></div><div><label>Жиры, г</label><input inputmode="decimal" id="rf"></div><div><label>Углеводы, г</label><input inputmode="decimal" id="rcc"></div><div><label>Белки, г</label><input inputmode="decimal" id="rpp"></div></div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="rok">${ic('right')}Записать</button></div>`, () => {
     $('#rok').onclick = () => {
       const name = $('#rnm').value.trim(), kcal = num($('#rk').value); if (!name || !(kcal > 0)) return toast('Укажите название и калории');

@@ -461,3 +461,19 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 [data-editset] .sv b { color: var(--txt); font-size: 17px; font-weight: 700; }
 [data-editset] .orm { font-size: 12px; font-weight: 600; color: var(--dim); background: rgba(255,255,255,.05); padding: 3px 9px; border-radius: 999px; }
 [data-editset] .btn.del { padding: 6px; opacity: .55; }
+
+/* ---- day summary: ring + macro columns ---- */
+.dsum2 { padding: 16px; }
+.dsum2 .hrow { display: flex; align-items: center; gap: 16px; }
+.dsum2 .ringwrap { width: 112px; height: 112px; flex: none; }
+.dsum2 .hk { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.dsum2 .hk small { display: block; font-size: 11.5px; color: var(--dim); margin-bottom: 2px; }
+.dsum2 .hk b { font-size: 20px; font-weight: 700; }
+.dsum2 .hk .bad b { color: var(--bad); }
+.vcols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.06); }
+.vcol { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.vcol .vl { font-size: 12.5px; font-weight: 600; color: var(--dim); }
+.vcol .vbar { position: relative; width: 100%; max-width: 74px; height: 70px; border-radius: 14px; background: rgba(255,255,255,.05); overflow: hidden; }
+.vcol .vbar i { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 12px 12px 0 0; transition: height .8s var(--ease); opacity: .9; }
+.vcol b { font-size: 20px; font-weight: 700; line-height: 1.1; margin-top: 2px; }
+.vcol small { font-size: 12px; color: var(--dim); }
