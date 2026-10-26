@@ -477,9 +477,10 @@ async function sendPlan(c, kind, title, payload, btn) {
   } catch (e) { toast(coachErr(e)); }
 }
 function nutritionEditor(c, draft) {
+  if (draft) draft.meals = (draft.meals || []).map(m => ({ ...m, text: String(m.text || '').replace(/<\/?span[^>]*>/g, '') }));   // clean up texts saved by an earlier display bug
   if (!draft) {
     const D = c && c.share.nutrition ? cleanClient(c.data) : null, gt = D && D.goals.kcal ? D.goals : { kcal: 2400, p: 150, f: 70, c: 270 }, gr = D && D.goalsRest.kcal ? D.goalsRest : { kcal: 2100, p: 150, f: 65, c: 210 };
-    draft = { title: '', goals: { ...gt }, goalsRest: { ...gr }, trainDays: D && D.trainDays.length ? D.trainDays.slice() : [1, 3, 5], meals: [{ type: 'b', text: '' }, { type: 'l', text: '' }, { type: 'd', text: '' }], notes: '' };
+    draft = { title: '', goals: { ...gt }, goalsRest: { ...gr }, trainDays: D && D.trainDays.length ? D.trainDays.slice() : [1, 3, 5], meals: [], notes: '' };
   }
   const fields = (id, g) => `<div class="grid2 col1"><div><label>Ккал</label><input inputmode="numeric" data-${id}="kcal" value="${g.kcal}"></div><div><label>Жиры, г</label><input inputmode="numeric" data-${id}="f" value="${g.f}"></div>
     <div><label>Углеводы, г</label><input inputmode="numeric" data-${id}="c" value="${g.c}"></div><div><label>Белки, г</label><input inputmode="numeric" data-${id}="p" value="${g.p}"></div></div><div class="sub dim" data-calc="${id}" style="margin-top:6px"></div>`;
@@ -489,7 +490,7 @@ function nutritionEditor(c, draft) {
     <div class="pgroup"><div class="ph3">${ic('bolt')}Тренировочный день</div>${fields('g', draft.goals)}<button class="btn ghost sm" data-fit="g" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <div class="pgroup"><div class="ph3">${ic('moon')}День отдыха</div>${fields('r', draft.goalsRest)}<button class="btn ghost sm" data-fit="r" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <label>Тренировочные дни недели</label><div id="ptd">${wdChips(draft.trainDays)}</div>
-    <label>Меню и рекомендации по приёмам пищи</label><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г"><span translate="no">${esc(m.text)}</span></textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
+    <label>Меню по приёмам пищи <small class="dim">— необязательно</small></label><div class="sub dim" style="margin:-2px 0 6px">Можно указать только КБЖУ. Продукты по приёмам пищи — по желанию.</div><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г">${esc(m.text)}</textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
     <button class="btn ghost sm" id="madd" style="margin-top:6px">${ic('plus')}Приём пищи</button>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Вода, сон, замены продуктов, как взвешиваться…">${esc(draft.notes)}</textarea>
     ${tplButtons(c)}`, p => {
