@@ -19,7 +19,7 @@ function planClean(p) {
   const P = p.payload || {}, o = {}, g = x => x && typeof x === 'object' ? { kcal: n0(x.kcal), p: n0(x.p), f: n0(x.f), c: n0(x.c) } : null;
   if (p.kind === 'nutrition') {
     o.goals = g(P.goals); o.goalsRest = g(P.goalsRest); o.trainDays = Array.isArray(P.trainDays) ? P.trainDays.map(Number).filter(d => d >= 0 && d <= 6) : null;
-    o.meals = (Array.isArray(P.meals) ? P.meals : []).slice(0, 12).map(m => ({ type: ['b', 'l', 'd', 's'].includes(m && m.type) ? m.type : 's', text: s0(m && m.text, 600) }));
+    o.meals = (Array.isArray(P.meals) ? P.meals : []).slice(0, 12).map(m => ({ type: ['b', 'l', 'd', 's'].includes(m && m.type) ? m.type : 's', text: s0(m && m.text, 600), items: (Array.isArray(m && m.items) ? m.items : []).slice(0, 30).map(it => ({ n: s0(it && it.n, 80), g: n0(it && it.g), kcal: n0(it && it.kcal), p: n0(it && it.p), f: n0(it && it.f), c: n0(it && it.c) })) }));
   } else {
     o.templates = (Array.isArray(P.templates) ? P.templates : []).slice(0, 14).map(t => ({ id: s0(t && t.id || uid(), 40), name: s0(t && t.name, 80), exercises: (Array.isArray(t && t.exercises) ? t.exercises : []).slice(0, 30).map(e => ({ name: s0(e && e.name, 80), plan: (Array.isArray(e && e.plan) ? e.plan : []).slice(0, 20).map(x => ({ w: n0(x && x.w), r: Math.round(n0(x && x.r)) })).filter(x => x.r > 0) })) }));
     o.schedule = {}; Object.entries(P.schedule && typeof P.schedule === 'object' ? P.schedule : {}).forEach(([wd, id]) => { if (+wd >= 0 && +wd <= 6) o.schedule[wd] = s0(id, 40); });
@@ -88,11 +88,17 @@ function coachHomeCard() {
   return h;
 }
 function coachBindHome() { document.querySelectorAll('[data-gocoach]').forEach(e => e.onclick = () => { CO.cid = null; CO.chat = null; tab = 'more'; moreSub = e.dataset.gocoach; animate = true; window.scrollTo(0, 0); render(); }); }
+// one meal of a coach's plan: products with grams and macros (if chosen from the base) and the free text
+const mealHas = m => !!(m && (m.text || (m.items || []).length));
+function mealView(m) {
+  const it = m.items || [], t = it.reduce((a, i) => { const k = i.g / 100; return { kcal: a.kcal + i.kcal * k, p: a.p + i.p * k, f: a.f + i.f * k, c: a.c + i.c * k }; }, { kcal: 0, p: 0, f: 0, c: 0 });
+  return `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span>${it.map(i => `<div class="mit"><span translate="no">${esc(i.n)}</span><em>${Math.round(i.g)} г · ${Math.round(i.kcal * i.g / 100)} ккал</em></div>`).join('')}${it.length ? `<div class="mtt"><b>${Math.round(t.kcal)}</b> ккал · Ж${r1(t.f)} У${r1(t.c)} Б${r1(t.p)}</div>` : ''}${m.text ? `<div class="mtx"><span translate="no">${esc(m.text)}</span></div>` : ''}</span></div>`;
+}
 function coachFoodCard() {
   const c = S.coachNutrition; if (!c) return '';
-  const meals = (c.meals || []).filter(m => m.text);
+  const meals = (c.meals || []).filter(mealHas);
   return `<div class="card"><h2><span class="hic">${ic('award')}План питания</span><small><span translate="no">${esc(c.title)}</span></small></h2>
-    ${meals.map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span><span translate="no">${esc(m.text)}</span></span></div>`).join('')}
+    ${meals.map(mealView).join('')}
     ${c.tips ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap"><span translate="no">${esc(c.tips)}</span></div>` : ''}${c.note ? `<div class="sub dim" style="margin-top:8px;white-space:pre-wrap"><span translate="no">${esc(c.note)}</span></div>` : ''}</div>`;
 }
 function coachTrainCard(d) {
@@ -164,7 +170,7 @@ function planBody(p) {
   if (p.kind === 'nutrition') {
     const row = (t, g) => g ? `<div class="prow"><b>${t}</b><span>${g.kcal} ккал · Ж ${g.f} · У ${g.c} · Б ${g.p}</span></div>` : '';
     return row('Тренировочный день', P.goals) + row('День отдыха', P.goalsRest) + (P.trainDays ? `<div class="prow"><b>Тренировочные дни</b><span>${wdNames(P.trainDays)}</span></div>` : '') +
-      ((P.meals || []).filter(m => m.text).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(m => m.text).map(m => `<div class="cmeal"><b>${(MT.find(x => x[0] === m.type) || ['', 'Приём'])[1]}</b><span><span translate="no">${esc(m.text)}</span></span></div>`).join('')}` : '') +
+      ((P.meals || []).filter(mealHas).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(mealHas).map(mealView).join('')}` : '') +
       (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
   }
   return (P.templates || []).map(t => { const days = Object.entries(P.schedule || {}).filter(([, id]) => id === t.id).map(([wd]) => +wd); return `<div class="pday"><div class="ph2"><b translate="no">${esc(t.name)}</b><span>${wdNames(days)}</span></div>${t.exercises.map(e => `<div class="pex"><span>${esc(e.name)}</span><em>${esc(planText(e.plan)) || '—'}</em></div>`).join('')}</div>`; }).join('') + (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
@@ -477,7 +483,7 @@ async function sendPlan(c, kind, title, payload, btn) {
   } catch (e) { toast(coachErr(e)); }
 }
 function nutritionEditor(c, draft) {
-  if (draft) draft.meals = (draft.meals || []).map(m => ({ ...m, text: String(m.text || '').replace(/<\/?span[^>]*>/g, '') }));   // clean up texts saved by an earlier display bug
+  if (draft) draft.meals = (draft.meals || []).map(m => ({ ...m, text: String(m.text || '').replace(/<\/?span[^>]*>/g, ''), items: Array.isArray(m.items) ? m.items : [] }));   // clean up texts saved by an earlier display bug
   if (!draft) {
     const D = c && c.share.nutrition ? cleanClient(c.data) : null, gt = D && D.goals.kcal ? D.goals : { kcal: 2400, p: 150, f: 70, c: 270 }, gr = D && D.goalsRest.kcal ? D.goalsRest : { kcal: 2100, p: 150, f: 65, c: 210 };
     draft = { title: '', goals: { ...gt }, goalsRest: { ...gr }, trainDays: D && D.trainDays.length ? D.trainDays.slice() : [1, 3, 5], meals: [], notes: '' };
@@ -490,22 +496,40 @@ function nutritionEditor(c, draft) {
     <div class="pgroup"><div class="ph3">${ic('bolt')}Тренировочный день</div>${fields('g', draft.goals)}<button class="btn ghost sm" data-fit="g" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <div class="pgroup"><div class="ph3">${ic('moon')}День отдыха</div>${fields('r', draft.goalsRest)}<button class="btn ghost sm" data-fit="r" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <label>Тренировочные дни недели</label><div id="ptd">${wdChips(draft.trainDays)}</div>
-    <label>Меню по приёмам пищи <small class="dim">— необязательно</small></label><div class="sub dim" style="margin:-2px 0 6px">Можно указать только КБЖУ. Продукты по приёмам пищи — по желанию.</div><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г">${esc(m.text)}</textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
+    <label>Меню по приёмам пищи <small class="dim">— необязательно</small></label><div class="sub dim" style="margin:-2px 0 6px">Можно указать только КБЖУ. Продукты по приёмам пищи — по желанию.</div><div id="pmeals">${draft.meals.map((m, i) => `<div class="mealbox" data-mb="${i}"><div class="mbh"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>
+      ${m.items.map((it, j) => `<div class="drow"><div class="main"><b>${esc(it.n)}</b><div class="sub" data-isub="${i}.${j}"></div></div><input class="dg" inputmode="decimal" data-ig="${i}.${j}" value="${it.g}"><span class="dim">г</span><button class="btn del" data-idel="${i}.${j}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}
+      <button class="btn ghost sm" data-iadd="${i}" style="margin-top:6px">${ic('plus')}Продукт из базы</button><div class="dsum" data-mtot="${i}"></div>
+      <textarea data-mx="${i}" rows="2" placeholder="Комментарий или продукты текстом (необязательно)">${esc(m.text)}</textarea></div>`).join('')}</div>
+    <div class="dsum" id="menutot"></div>
     <button class="btn ghost sm" id="madd" style="margin-top:6px">${ic('plus')}Приём пищи</button>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Вода, сон, замены продуктов, как взвешиваться…">${esc(draft.notes)}</textarea>
     ${tplButtons(c)}`, p => {
     bindChips($('#ptd'));
     const read = id => { const o = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { o[k] = Math.round(num(p.querySelector(`[data-${id}="${k}"]`).value)); }); return o; };
-    const sync = () => { draft.title = $('#pt').value; draft.goals = read('g'); draft.goalsRest = read('r'); draft.trainDays = pickedDays($('#ptd')); draft.notes = $('#pn').value; draft.meals = [...p.querySelectorAll('[data-mx]')].map((x, i) => ({ type: p.querySelector(`[data-mt2="${i}"]`).value, text: x.value })); };
+    const sync = () => { draft.title = $('#pt').value; draft.goals = read('g'); draft.goalsRest = read('r'); draft.trainDays = pickedDays($('#ptd')); draft.notes = $('#pn').value; draft.meals = [...p.querySelectorAll('[data-mx]')].map((x, i) => ({ type: p.querySelector(`[data-mt2="${i}"]`).value, text: x.value, items: (draft.meals[i] ? draft.meals[i].items : []).map((it, j) => ({ ...it, g: num((p.querySelector(`[data-ig="${i}.${j}"]`) || {}).value) || it.g })) })); };
+    const macros = it => `${Math.round(it.kcal * it.g / 100)} ккал · Ж${r1(it.f * it.g / 100)} У${r1(it.c * it.g / 100)} Б${r1(it.p * it.g / 100)}`;
+    const tot = items => items.reduce((a, it) => { const k = it.g / 100; return { kcal: a.kcal + it.kcal * k, p: a.p + it.p * k, f: a.f + it.f * k, c: a.c + it.c * k }; }, { kcal: 0, p: 0, f: 0, c: 0 });
+    const line = t => `<b>${Math.round(t.kcal)}</b> ккал · Ж${r1(t.f)} У${r1(t.c)} Б${r1(t.p)}`;
+    const upd = () => {
+      sync(); let all = { kcal: 0, p: 0, f: 0, c: 0 };
+      draft.meals.forEach((m, i) => { m.items.forEach((it, j) => { const el = p.querySelector(`[data-isub="${i}.${j}"]`); if (el) el.textContent = macros(it); }); const t = tot(m.items), el = p.querySelector(`[data-mtot="${i}"]`); if (el) el.innerHTML = m.items.length ? line(t) : ''; ['kcal', 'p', 'f', 'c'].forEach(k => { all[k] += t[k]; }); });
+      const has = draft.meals.some(m => m.items.length), g = read('g');
+      $('#menutot').innerHTML = has ? `<div>Меню даёт: ${line(all)}</div><div class="dim small">Цель тренировочного дня: ${g.kcal} ккал · Ж${g.f} У${g.c} Б${g.p}</div><button class="btn ghost sm" id="mfill" style="margin-top:6px">Подставить в цели тренировочного дня</button>` : '';
+      if ($('#mfill')) $('#mfill').onclick = () => { const set = (k, v) => { p.querySelector(`[data-g="${k}"]`).value = Math.round(v); }; set('kcal', all.kcal); set('f', all.f); set('c', all.c); set('p', all.p); calc(); upd(); };
+    };
     const calc = () => ['g', 'r'].forEach(id => { const g = read(id), k = 4 * g.p + 4 * g.c + 9 * g.f, el = p.querySelector(`[data-calc="${id}"]`); el.textContent = `Б·Ж·У дают ≈ ${k} ккал`; el.className = 'sub ' + (g.kcal && Math.abs(k - g.kcal) > Math.max(40, g.kcal * 0.08) ? 'warn' : 'dim'); });
     p.querySelectorAll('input[data-g], input[data-r]').forEach(i => { i.oninput = calc; }); calc();
     p.querySelectorAll('[data-fit]').forEach(b => b.onclick = () => { const id = b.dataset.fit, g = read(id); p.querySelector(`[data-${id}="c"]`).value = Math.max(0, Math.round((g.kcal - 4 * g.p - 9 * g.f) / 4)); calc(); });
     tplBind('nutrition', c, draft, sync);
-    $('#madd').onclick = () => { sync(); draft.meals.push({ type: 's', text: '' }); nutritionEditor(c, draft); };
+    p.querySelectorAll('[data-ig]').forEach(i => { i.oninput = upd; }); p.querySelectorAll('[data-mx], [data-mt2]').forEach(i => { i.onchange = sync; });
+    p.querySelectorAll('[data-iadd]').forEach(b => b.onclick = () => { sync(); const i = +b.dataset.iadd; pickFood({ onPick: f => askGrams(f, g => { draft.meals[i].items.push({ n: s0(f.name, 80), g, kcal: f.kcal, p: f.p, f: f.f, c: f.c }); foodChoose = null; nutritionEditor(c, draft); }) }); });
+    p.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { sync(); const [i, j] = b.dataset.idel.split('.').map(Number); draft.meals[i].items.splice(j, 1); nutritionEditor(c, draft); });
+    $('#madd').onclick = () => { sync(); draft.meals.push({ type: autoType(), text: '', items: [] }); nutritionEditor(c, draft); };
+    upd();
     p.querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { sync(); draft.meals.splice(+b.dataset.mdel, 1); nutritionEditor(c, draft); });
     if ($('#psend')) $('#psend').onclick = () => {
       sync(); if (!draft.title.trim()) return $('#pt').focus(); if (!draft.goals.kcal || !draft.goalsRest.kcal) return toast('Укажите калории для обоих типов дней');
-      sendPlan(c, 'nutrition', draft.title.trim(), { goals: draft.goals, goalsRest: draft.goalsRest, trainDays: draft.trainDays, meals: draft.meals.filter(m => m.text.trim()).map(m => ({ type: m.type, text: m.text.trim() })), notes: draft.notes.trim() }, $('#psend'));
+      sendPlan(c, 'nutrition', draft.title.trim(), { goals: draft.goals, goalsRest: draft.goalsRest, trainDays: draft.trainDays, meals: draft.meals.filter(m => m.text.trim() || m.items.length).map(m => ({ type: m.type, text: m.text.trim(), items: m.items.map(it => ({ n: it.n, g: Math.round(it.g * 10) / 10, kcal: it.kcal, p: it.p, f: it.f, c: it.c })) })), notes: draft.notes.trim() }, $('#psend'));
     };
   });
 }
