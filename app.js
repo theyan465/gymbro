@@ -27,10 +27,8 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
 // ---------- helpers ----------
 const $ = (s, r = document) => r.querySelector(s);
-// iOS ignores user-scalable=no: block pinch gestures and double-tap zoom by hand
+// iOS ignores user-scalable=no: block pinch gestures by hand (double-tap zoom is off via touch-action: manipulation)
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
-let lastTap = 0;
-document.addEventListener('touchend', e => { const n = Date.now(); if (n - lastTap < 350 && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) e.preventDefault(); lastTap = n; }, { passive: false });
 // tapping a filled field selects its content, so typing replaces the old value (not for notes/chat: textareas, dates, passwords)
 document.addEventListener('focusin', e => {
   const el = e.target;
