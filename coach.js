@@ -54,7 +54,7 @@ async function coachInit() {
 }
 function coachReset() { clearInterval(CO.poll); clearInterval(CO.chatPoll); Object.assign(CO, { profile: null, my: null, clients: null, unread: 0, ok: null, cid: null, chat: null, myPlans: null, plans: {}, invites: [] }); coachBadge(); }
 async function coachRefresh() {
-  CO.my = await rpc('my_coach'); CO.unread = (await rpc('unread_count')) || 0;
+  CO.my = await rpc('my_coach'); if (CO.my) await entriesApply().catch(() => {}); CO.unread = (await rpc('unread_count')) || 0;
   if (CO.profile && CO.profile.is_coach) CO.clients = await rpc('coach_clients', { p_days: 60 });
   coachBadge();
   const typing = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
@@ -227,6 +227,7 @@ function coachMyView() {
       <button class="btn full" id="gochat" style="margin-top:12px">${ic('right')}Чат с тренером${my.unread ? `<span class="nbadge inl">${my.unread}</span>` : ''}</button></div>
       <div class="card"><h2>Планы от тренера</h2><div id="myplans"><div class="empty">Загружаю…</div></div></div>
       <div class="card"><h2>Что видит тренер</h2>${SHARES.map(([k, n, d]) => `<label class="sw"><input type="checkbox" data-sh="${k}" ${my.share[k] ? 'checked' : ''} ${k === 'photos' && !my.share.body ? 'disabled' : ''}><i></i><span>${n}<small>${d}</small></span></label>`).join('')}</div>
+      <div class="card"><h2>Запись тренером</h2><label class="sw"><input type="checkbox" id="wacc" ${my.share.write ? 'checked' : ''}><i></i><span>Тренер может записывать за меня<small>для очных тренировок: он добавит тренировку, еду или замеры в ваш дневник. Такие записи помечены, отключить можно в любой момент</small></span></label></div>
       <button class="btn ghost danger full" id="endlink">Отключить тренера</button>`) + profileCard;
   $('#cback').onclick = toAccount;
   $('#pname').onchange = async e => { const v = e.target.value.trim().slice(0, 60); const { error } = await sb.from('profiles').update({ display_name: v, updated_at: new Date().toISOString() }).eq('user_id', user.id); if (error) return toast(coachErr(error)); CO.profile.display_name = v; toast('Имя сохранено'); };
@@ -238,6 +239,7 @@ function coachMyView() {
       const sh = { ...my.share }; document.querySelectorAll('[data-sh]').forEach(x => { sh[x.dataset.sh] = x.checked; }); if (!sh.body) sh.photos = false;
       try { await rpc('update_shares', { p_link: my.link_id, p_nutrition: sh.nutrition, p_training: sh.training, p_body: sh.body, p_vitamins: sh.vitamins, p_photos: sh.photos }); my.share = sh; toast('Доступ обновлён'); coachRender(); } catch (e) { toast(coachErr(e)); }
     });
+    $('#wacc').onchange = async e => { try { await rpc('set_write_access', { p_link: my.link_id, p_allow: e.target.checked }); my.share.write = e.target.checked; toast(e.target.checked ? 'Тренер может записывать за вас' : 'Запись тренером отключена'); } catch (err) { e.target.checked = !e.target.checked; toast(coachErr(err)); } };
     $('#endlink').onclick = async () => { if (!confirm('Отключить тренера? Он перестанет видеть ваши данные. Планы, которые вы уже применили, останутся.')) return; try { await rpc('end_link', { p_link: my.link_id }); await coachRefresh(); toast('Тренер отключён'); } catch (e) { toast(coachErr(e)); } };
     plansForMe().then(list => {
       const box = $('#myplans'); if (!box) return;
@@ -313,9 +315,15 @@ function coachListView() {
       <div class="cdots">${s.week.map(w => `<i class="cdot ${w.f === null ? 'na' : w.f >= 1 ? 'ok' : w.f > 0 ? 'mid' : 'zero'}" title="${esc(dayLabel(w.k))}"></i>`).join('')}</div>
       <div class="kpis">${sh.nutrition ? `<span>Еда <b>${s.foodDays}/7</b>${s.foodDays ? ` · ${Math.round(s.kcalAvg)} ккал` : ''}</span>` : ''}${sh.training ? `<span>Тренировки <b>${s.trainCount}</b></span>` : ''}${sh.body && s.wNow ? `<span>Вес <b>${s.wNow}</b>${s.wDelta !== null ? ` (${s.wDelta > 0 ? '+' : s.wDelta < 0 ? '−' : ''}${Math.abs(s.wDelta)})` : ''}</span>` : ''}${sh.vitamins && s.vitPct !== null ? `<span>Витамины <b>${s.vitPct}%</b></span>` : ''}</div>
       ${s.alerts.length ? `<div class="alerts">${s.alerts.slice(0, 3).map(a => `<span class="alertchip l${s.level}">${esc(a)}</span>`).join('')}</div>` : ''}</div>`; }).join('') || '<div class="card"><div class="empty">Подопечных пока нет. Создайте приглашение и отправьте код.</div></div>'}
+    <div class="card"><h2>Мои шаблоны</h2><div class="dim small" style="margin-bottom:8px">Готовые планы питания и тренировок: отправляйте подопечным в пару касаний.</div>
+      ${[['nutrition', 'Питание', 'utensils'], ['training', 'Тренировки', 'dumbbell']].flatMap(([k, n, i]) => ctplList(k).map(t => `<div class="row pick" data-etpl="${k}:${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${n} · ${esc(ctplInfo(k, t.draft))}</div></div><button class="btn del" data-dtpl="${k}:${t.id}" aria-label="Удалить">${ic('x')}</button></div>`)).join('')}
+      <div class="btns" style="margin-top:8px"><button class="btn ghost" id="tpln">${ic('plus')}Шаблон питания</button><button class="btn ghost" id="tplt">${ic('plus')}Шаблон тренировок</button></div></div>
     <div class="card"><h2>Активные приглашения</h2><div id="invlist"><div class="sub dim">Загружаю…</div></div></div>`;
   $('#cback').onclick = toAccount;
   $('#invite').onclick = inviteSheet;
+  $('#tpln').onclick = () => planEditor('nutrition', null); $('#tplt').onclick = () => planEditor('training', null);
+  document.querySelectorAll('[data-etpl]').forEach(r => r.onclick = e => { if (e.target.closest('[data-dtpl]')) return; const [k, id] = r.dataset.etpl.split(':'), t = ctplList(k).find(x => x.id === id); if (t) planEditor(k, null, { ...ctplDraft(k, t), title: t.name, _tpl: t.id }); });
+  document.querySelectorAll('[data-dtpl]').forEach(b => b.onclick = () => { if (!confirm('Удалить шаблон?')) return; const [k, id] = b.dataset.dtpl.split(':'); S.coachTpl[k] = ctplList(k).filter(x => x.id !== id); save(); coachRender(); });
   document.querySelectorAll('[data-cid]').forEach(e => e.onclick = () => coachOpenClient(e.dataset.cid));
   sb.from('coach_invites').select('*').is('used_by', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).then(({ data }) => {
     const box = $('#invlist'); if (!box) return; CO.invites = data || [];
@@ -351,7 +359,7 @@ const kpi = (t, v, sub) => `<div class="kpi"><small>${t}</small><b>${v}</b><span
 function coachClientView() {
   const c = (CO.clients || []).find(x => x.client_id === CO.cid); if (!c) { CO.cid = null; return coachListView(); }
   const sh = c.share, s = clientStats(c), D = cleanClient(c.data), t = today();
-  const tabs = [['overview', 'Обзор'], ['nutrition', 'Питание'], ['training', 'Тренировки'], ['body', 'Тело'], ['plans', 'Планы'], ['chat', 'Чат']];
+  const tabs = [['overview', 'Обзор'], ['nutrition', 'Питание'], ['training', 'Тренировки'], ['body', 'Тело'], ['plans', 'Планы'], ['rec', 'Запись'], ['chat', 'Чат']];
   const lock = what => `<div class="card"><div class="empty">${ic('lock')}<div style="margin-top:6px">Подопечный не открыл доступ к разделу «${what}».</div></div></div>`;
   let body = '', after = () => {};
   if (CO.tab === 'overview') {
@@ -419,9 +427,12 @@ function coachClientView() {
       };
     }
   } else if (CO.tab === 'plans') {
-    body = `<div class="btns" style="margin-bottom:12px"><button class="btn" id="npn">${ic('utensils')}План питания</button><button class="btn" id="npt">${ic('dumbbell')}План тренировок</button></div><div class="card"><h2>Отправленные планы</h2><div id="planlist"><div class="sub dim">Загружаю…</div></div></div>`;
+    const qt = [['nutrition', 'utensils'], ['training', 'dumbbell']].flatMap(([k, i]) => ctplList(k).map(t => `<button class="chip" data-qt="${k}:${t.id}">${ic(i)}${esc(t.name)}</button>`));
+    body = `<div class="btns" style="margin-bottom:12px"><button class="btn" id="npn">${ic('utensils')}План питания</button><button class="btn" id="npt">${ic('dumbbell')}План тренировок</button></div>
+      <div class="card"><h2>Быстро из шаблона</h2>${qt.length ? `<div class="chips" style="flex-wrap:wrap">${qt.join('')}</div><div class="sub dim" style="margin-top:8px">Откроется редактор с готовым содержимым: поправьте и отправьте.</div>` : '<div class="sub dim">Шаблонов ещё нет. Создайте их в «Мои подопечные» или сохраните план кнопкой «В шаблон».</div>'}</div><div class="card"><h2>Отправленные планы</h2><div id="planlist"><div class="sub dim">Загружаю…</div></div></div>`;
     after = () => {
       $('#npn').onclick = () => planEditor('nutrition', c); $('#npt').onclick = () => planEditor('training', c);
+      document.querySelectorAll('[data-qt]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.qt.split(':'), t = ctplList(k).find(x => x.id === id); if (t) planEditor(k, c, ctplDraft(k, t)); });
       sb.from('coach_plans').select('*').eq('link_id', c.link_id).order('created_at', { ascending: false }).limit(40).then(({ data, error }) => {
         const box = $('#planlist'); if (!box) return; if (error) { box.innerHTML = `<div class="sub warn">${esc(coachErr(error))}</div>`; return; }
         const list = (data || []).map(planClean); list.forEach(p => { CO.plans[p.id] = p; }); const st = { sent: 'Ожидает', applied: 'Принят', declined: 'Отклонён' };
@@ -429,6 +440,8 @@ function coachClientView() {
         box.querySelectorAll('[data-plan]').forEach(r => r.onclick = () => planOpen(r.dataset.plan));
       });
     };
+  } else if (CO.tab === 'rec') {
+    body = recBody(c); after = () => recBind(c);
   } else {
     body = chatHtml();
     after = () => chatBind();
@@ -465,29 +478,31 @@ async function sendPlan(c, kind, title, payload, btn) {
 }
 function nutritionEditor(c, draft) {
   if (!draft) {
-    const D = c.share.nutrition ? cleanClient(c.data) : null, gt = D && D.goals.kcal ? D.goals : { kcal: 2400, p: 150, f: 70, c: 270 }, gr = D && D.goalsRest.kcal ? D.goalsRest : { kcal: 2100, p: 150, f: 65, c: 210 };
+    const D = c && c.share.nutrition ? cleanClient(c.data) : null, gt = D && D.goals.kcal ? D.goals : { kcal: 2400, p: 150, f: 70, c: 270 }, gr = D && D.goalsRest.kcal ? D.goalsRest : { kcal: 2100, p: 150, f: 65, c: 210 };
     draft = { title: '', goals: { ...gt }, goalsRest: { ...gr }, trainDays: D && D.trainDays.length ? D.trainDays.slice() : [1, 3, 5], meals: [{ type: 'b', text: '' }, { type: 'l', text: '' }, { type: 'd', text: '' }], notes: '' };
   }
   const fields = (id, g) => `<div class="grid2"><div><label>Ккал</label><input inputmode="numeric" data-${id}="kcal" value="${g.kcal}"></div><div><label>Белки, г</label><input inputmode="numeric" data-${id}="p" value="${g.p}"></div>
     <div><label>Жиры, г</label><input inputmode="numeric" data-${id}="f" value="${g.f}"></div><div><label>Углеводы, г</label><input inputmode="numeric" data-${id}="c" value="${g.c}"></div></div><div class="sub dim" data-calc="${id}" style="margin-top:6px"></div>`;
-  sheet(`<h2 class="sh">План питания · ${esc(c.name)}</h2>
-    <label style="margin-top:0">Название плана</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Сушка, 4 недели" maxlength="120">
+  if (!c && !draft._tpl) draft._tpl = 'new';
+  sheet(`<h2 class="sh">${c ? 'План питания · ' + esc(c.name) : 'Шаблон питания'}</h2>
+    <label style="margin-top:0">${c ? 'Название плана' : 'Название шаблона'}</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Сушка, 4 недели" maxlength="120">
     <div class="pgroup"><div class="ph3">${ic('bolt')}Тренировочный день</div>${fields('g', draft.goals)}<button class="btn ghost sm" data-fit="g" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <div class="pgroup"><div class="ph3">${ic('moon')}День отдыха</div>${fields('r', draft.goalsRest)}<button class="btn ghost sm" data-fit="r" style="margin-top:8px">Подогнать углеводы под ккал</button></div>
     <label>Тренировочные дни недели</label><div id="ptd">${wdChips(draft.trainDays)}</div>
     <label>Меню и рекомендации по приёмам пищи</label><div id="pmeals">${draft.meals.map((m, i) => `<div class="mrow2"><select data-mt2="${i}">${MT.map(([k, n]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select><textarea data-mx="${i}" rows="2" placeholder="Например: овсянка 80 г, яйца 2 шт, ягоды 100 г">${esc(m.text)}</textarea><button class="btn del" data-mdel="${i}" aria-label="Убрать">${ic('x')}</button></div>`).join('')}</div>
     <button class="btn ghost sm" id="madd" style="margin-top:6px">${ic('plus')}Приём пищи</button>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Вода, сон, замены продуктов, как взвешиваться…">${esc(draft.notes)}</textarea>
-    <div class="btns" style="margin-top:14px"><button class="btn" id="psend">${ic('right')}Отправить подопечному</button></div>`, p => {
+    ${tplButtons(c)}`, p => {
     bindChips($('#ptd'));
     const read = id => { const o = {}; ['kcal', 'p', 'f', 'c'].forEach(k => { o[k] = Math.round(num(p.querySelector(`[data-${id}="${k}"]`).value)); }); return o; };
     const sync = () => { draft.title = $('#pt').value; draft.goals = read('g'); draft.goalsRest = read('r'); draft.trainDays = pickedDays($('#ptd')); draft.notes = $('#pn').value; draft.meals = [...p.querySelectorAll('[data-mx]')].map((x, i) => ({ type: p.querySelector(`[data-mt2="${i}"]`).value, text: x.value })); };
     const calc = () => ['g', 'r'].forEach(id => { const g = read(id), k = 4 * g.p + 4 * g.c + 9 * g.f, el = p.querySelector(`[data-calc="${id}"]`); el.textContent = `Б·Ж·У дают ≈ ${k} ккал`; el.className = 'sub ' + (g.kcal && Math.abs(k - g.kcal) > Math.max(40, g.kcal * 0.08) ? 'warn' : 'dim'); });
     p.querySelectorAll('input[data-g], input[data-r]').forEach(i => { i.oninput = calc; }); calc();
     p.querySelectorAll('[data-fit]').forEach(b => b.onclick = () => { const id = b.dataset.fit, g = read(id); p.querySelector(`[data-${id}="c"]`).value = Math.max(0, Math.round((g.kcal - 4 * g.p - 9 * g.f) / 4)); calc(); });
+    tplBind('nutrition', c, draft, sync);
     $('#madd').onclick = () => { sync(); draft.meals.push({ type: 's', text: '' }); nutritionEditor(c, draft); };
     p.querySelectorAll('[data-mdel]').forEach(b => b.onclick = () => { sync(); draft.meals.splice(+b.dataset.mdel, 1); nutritionEditor(c, draft); });
-    $('#psend').onclick = () => {
+    if ($('#psend')) $('#psend').onclick = () => {
       sync(); if (!draft.title.trim()) return $('#pt').focus(); if (!draft.goals.kcal || !draft.goalsRest.kcal) return toast('Укажите калории для обоих типов дней');
       sendPlan(c, 'nutrition', draft.title.trim(), { goals: draft.goals, goalsRest: draft.goalsRest, trainDays: draft.trainDays, meals: draft.meals.filter(m => m.text.trim()).map(m => ({ type: m.type, text: m.text.trim() })), notes: draft.notes.trim() }, $('#psend'));
     };
@@ -495,21 +510,23 @@ function nutritionEditor(c, draft) {
 }
 function trainingEditor(c, draft) {
   if (!draft) draft = { title: '', notes: '', days: [{ id: uid(), name: 'День 1', wd: [1], exercises: [] }] };
-  sheet(`<h2 class="sh">План тренировок · ${esc(c.name)}</h2>
-    <label style="margin-top:0">Название плана</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Масса, 3 дня в неделю" maxlength="120">
+  if (!c && !draft._tpl) draft._tpl = 'new';
+  sheet(`<h2 class="sh">${c ? 'План тренировок · ' + esc(c.name) : 'Шаблон тренировок'}</h2>
+    <label style="margin-top:0">${c ? 'Название плана' : 'Название шаблона'}</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Масса, 3 дня в неделю" maxlength="120">
     ${draft.days.map((d, i) => `<div class="pgroup" data-day="${i}"><div class="dayhead"><input data-dn="${i}" value="${esc(d.name)}" maxlength="80" aria-label="Название дня"><button class="btn del" data-ddel="${i}" aria-label="Удалить день">${ic('x')}</button></div>
       <div class="dim small" style="margin:6px 0 4px">Дни недели</div><div data-dwd="${i}">${wdChips(d.wd)}</div>
       ${d.exercises.map((e, j) => `<div class="pexrow"><div class="pexn"><b>${esc(e.name)}</b><button class="btn del" data-edel="${i}.${j}" aria-label="Убрать">${ic('x')}</button></div><input data-ep="${i}.${j}" value="${esc(e.plan)}" placeholder="вес×повторы: 80x8, 80x8, 80x6"></div>`).join('')}
       <button class="btn ghost sm" data-eadd="${i}" style="margin-top:8px">${ic('plus')}Упражнение</button></div>`).join('')}
     <div class="btns" style="margin-top:10px"><button class="btn ghost" id="dadd">${ic('plus')}День</button>${S.templates.filter(t => !t.coach).length ? `<button class="btn ghost" id="dtpl">${ic('list')}Из моих шаблонов</button>` : ''}</div>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Разминка, отдых между подходами, техника, прогрессия весов…">${esc(draft.notes)}</textarea>
-    <div class="btns" style="margin-top:14px"><button class="btn" id="psend">${ic('right')}Отправить подопечному</button></div>`, p => {
+    ${tplButtons(c)}`, p => {
     p.querySelectorAll('[data-dwd]').forEach(el => bindChips(el));
     const sync = () => {
       draft.title = $('#pt').value; draft.notes = $('#pn').value;
       draft.days.forEach((d, i) => { d.name = p.querySelector(`[data-dn="${i}"]`).value; d.wd = pickedDays(p.querySelector(`[data-dwd="${i}"]`)); d.exercises.forEach((e, j) => { e.plan = p.querySelector(`[data-ep="${i}.${j}"]`).value; }); });
     };
     const again = () => trainingEditor(c, draft);
+    tplBind('training', c, draft, sync);
     $('#dadd').onclick = () => { sync(); draft.days.push({ id: uid(), name: 'День ' + (draft.days.length + 1), wd: [], exercises: [] }); again(); };
     p.querySelectorAll('[data-ddel]').forEach(b => b.onclick = () => { sync(); draft.days.splice(+b.dataset.ddel, 1); again(); });
     p.querySelectorAll('[data-edel]').forEach(b => b.onclick = () => { sync(); const [i, j] = b.dataset.edel.split('.').map(Number); draft.days[i].exercises.splice(j, 1); again(); });
@@ -520,11 +537,140 @@ function trainingEditor(c, draft) {
         pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = () => { const t = tp.find(x => x.id === r.dataset.tp); draft.days.push({ id: uid(), name: t.name, wd: [], exercises: t.exercises.map(e => ({ name: e.name, plan: planText(e.plan) })) }); again(); });
       });
     };
-    $('#psend').onclick = () => {
+    if ($('#psend')) $('#psend').onclick = () => {
       sync(); if (!draft.title.trim()) return $('#pt').focus();
       const days = draft.days.filter(d => d.exercises.length); if (!days.length) return toast('Добавьте хотя бы одно упражнение');
       const schedule = {}; days.forEach(d => d.wd.forEach(w => { schedule[w] = d.id; }));
       sendPlan(c, 'training', draft.title.trim(), { templates: days.map(d => ({ id: d.id, name: d.name.trim() || 'День', exercises: d.exercises.map(e => ({ name: e.name, plan: parsePlan(e.plan) })) })), schedule, notes: draft.notes.trim() }, $('#psend'));
+    };
+  });
+}
+
+
+// ---------- coach: templates (stored in the coach's own account data, synced with it) ----------
+const ctplList = kind => (S.coachTpl && S.coachTpl[kind]) || [];
+function ctplInfo(kind, d) {
+  if (kind === 'nutrition') return `${Math.round((d.goals || {}).kcal || 0)} ккал · приёмов пищи: ${(d.meals || []).length}`;
+  const days = d.days || []; return `${days.length} ${plural(days.length, ['день', 'дня', 'дней'])} · ${days.reduce((a, x) => a + x.exercises.length, 0)} упр.`;
+}
+function ctplSave(kind, name, draft, id) {
+  S.coachTpl = S.coachTpl || { nutrition: [], training: [] }; const L = S.coachTpl[kind] = S.coachTpl[kind] || [], d = structuredClone(draft); delete d._tpl;
+  const rec = { id: id || uid(), name: s0(name, 80), draft: d, at: Date.now() }, i = L.findIndex(x => x.id === rec.id);
+  if (i >= 0) L[i] = rec; else L.unshift(rec); save(); return rec;
+}
+function ctplDraft(kind, t) {
+  const d = structuredClone(t.draft); delete d._tpl; if (!d.title) d.title = t.name;
+  if (kind === 'training') (d.days || []).forEach(x => { x.id = uid(); });
+  return d;
+}
+const tplButtons = c => c
+  ? `<div class="btns" style="margin-top:14px"><button class="btn" id="psend">${ic('right')}Отправить подопечному</button></div><div class="btns" style="margin-top:8px"><button class="btn ghost" id="tfrom">${ic('list')}Из шаблона</button><button class="btn ghost" id="tsave">${ic('plus')}В шаблон</button></div>`
+  : `<div class="btns" style="margin-top:14px"><button class="btn" id="psave">${ic('check')}Сохранить шаблон</button></div>`;
+function tplBind(kind, c, draft, sync) {
+  if ($('#tfrom')) $('#tfrom').onclick = () => { sync(); ctplPick(kind, c, draft); };
+  if ($('#tsave')) $('#tsave').onclick = () => { sync(); sheet(`<h2 class="sh">Сохранить как шаблон</h2><label style="margin-top:0">Название шаблона</label><input id="tn" value="${esc(draft.title)}" maxlength="80" autocomplete="off"><div class="btns" style="margin-top:12px"><button class="btn" id="tok">Сохранить</button></div>`, () => {
+    $('#tok').onclick = () => { const n = $('#tn').value.trim(); if (!n) return $('#tn').focus(); ctplSave(kind, n, draft); okBtn($('#tok'), () => planEditor(kind, c, draft), 'Шаблон сохранён'); };
+  }); };
+  if ($('#psave')) $('#psave').onclick = () => {
+    sync(); if (!draft.title.trim()) return $('#pt').focus();
+    ctplSave(kind, draft.title.trim(), draft, draft._tpl && draft._tpl !== 'new' ? draft._tpl : null); okBtn($('#psave'), () => { closeSheet(); coachRender(); }, 'Шаблон сохранён');
+  };
+}
+function ctplPick(kind, c, draft) {
+  const L = ctplList(kind);
+  sheet(`<h2 class="sh">Шаблоны ${kind === 'nutrition' ? 'питания' : 'тренировок'}</h2>${L.map(t => `<div class="row pick" data-tp="${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${esc(ctplInfo(kind, t.draft))}</div></div><button class="btn del" data-tpdel="${t.id}" aria-label="Удалить">${ic('x')}</button></div>`).join('') || '<div class="empty">Шаблонов пока нет. Сохраните план кнопкой «В шаблон».</div>'}
+    ${kind === 'training' && L.length ? '<div class="dim small" style="margin-top:8px">Дни шаблона добавятся к плану.</div>' : ''}`, pn => {
+    pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = e => {
+      if (e.target.closest('[data-tpdel]')) return; const t = L.find(x => x.id === r.dataset.tp), d = ctplDraft(kind, t);
+      if (kind === 'training') { draft.days = draft.days.filter(x => x.exercises.length).concat(d.days); if (!draft.title.trim()) draft.title = d.title; if (!draft.notes.trim()) draft.notes = d.notes || ''; planEditor(kind, c, draft); }
+      else planEditor(kind, c, { ...d, title: draft.title.trim() || d.title });
+    });
+    pn.querySelectorAll('[data-tpdel]').forEach(b => b.onclick = () => { if (!confirm('Удалить шаблон?')) return; S.coachTpl[kind] = L.filter(x => x.id !== b.dataset.tpdel); save(); ctplPick(kind, c, draft); });
+  });
+}
+
+// ---------- coach records for the client (offline sessions) ----------
+const okDay = k => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k) && k >= shiftDay(today(), -400) && k <= shiftDay(today(), 1);
+function entryApply(e) {
+  const d = e && e.data && typeof e.data === 'object' ? e.data : {}, k = okDay(d.date) ? d.date : today();
+  if (e.kind === 'meal') {
+    S.meals.push({ id: uid(), date: k, name: s0(d.name, 120) || 'Приём пищи', g: n0(d.g), kcal: n0(d.kcal), p: n0(d.p), f: n0(d.f), c: n0(d.c), type: ['b', 'l', 'd', 's'].includes(d.type) ? d.type : '', byCoach: true }); return true;
+  }
+  if (e.kind === 'workout') {
+    const exs = (Array.isArray(d.exercises) ? d.exercises : []).slice(0, 30).map(x => ({ name: s0(x && x.name, 80).trim(), sets: (Array.isArray(x && x.sets) ? x.sets : []).slice(0, 30).map(y => ({ w: n0(y && y.w), r: Math.round(n0(y && y.r)) })).filter(y => y.r > 0), byCoach: true })).filter(x => x.name && x.sets.length);
+    if (!exs.length) return false; let w = S.workouts.find(x => x.date === k); if (!w) { w = { id: uid(), date: k, exercises: [] }; S.workouts.push(w); }
+    w.exercises.push(...exs); return true;
+  }
+  if (e.kind === 'body') {
+    const rec = {}; MEAS.forEach(([m]) => { const v = n0(d[m]); if (v > 0) rec[m] = Math.min(v, 999); }); if (!Object.keys(rec).length) return false;
+    const ex = S.body.find(b => b.date === k); if (ex) Object.assign(ex, rec); else S.body.push({ id: uid(), date: k, ...rec }); return true;
+  }
+  return false;
+}
+async function entriesApply() {
+  const list = await rpc('pending_entries'); if (!Array.isArray(list) || !list.length) return;
+  S.coachApplied = S.coachApplied || []; let n = 0;
+  list.forEach(e => { if (S.coachApplied.includes(e.id)) return; if (entryApply(e)) { n++; S.coachApplied.push(e.id); } });
+  S.coachApplied = S.coachApplied.slice(-300); if (n) save();
+  await rpc('ack_entries', { p_ids: list.map(e => e.id) });
+  if (n) { toast(`Тренер записал в дневник: ${n}`); if ($('#sheet').hidden) render(); }
+}
+async function recSend(c, entries, btn) {
+  try { await rpc('coach_add_entries', { p_link: c.link_id, p_entries: entries }); okBtn(btn, () => { closeSheet(); coachRefresh().catch(() => {}); coachRender(); }, 'Записано в дневник подопечного'); }
+  catch (e) { toast(/not allowed/.test(e.message) ? 'Подопечный не разрешил запись' : coachErr(e)); }
+}
+function recBody(c) {
+  if (!c.share.write) return `<div class="card"><div class="empty">${ic('lock')}<div style="margin-top:6px">Запись за подопечного выключена. Попросите его включить «Тренер может записывать за меня» в разделе «Аккаунт → Мой тренер».</div></div></div>`;
+  return `<div class="card"><h2>Записать за подопечного</h2><div class="dim small" style="margin-bottom:10px">Для очных тренировок без телефона у подопечного. Записи появятся в его дневнике при следующем открытии приложения и будут помечены.${c.pending ? ` Ещё не применено: ${c.pending}.` : ''}</div>
+    <div class="btns"><button class="btn" id="rwk">${ic('dumbbell')}Тренировка</button><button class="btn" id="rml">${ic('utensils')}Приём пищи</button><button class="btn" id="rbd">${ic('ruler')}Замеры</button></div></div>
+    <div class="card"><h2>Недавние записи</h2><div id="reclist"><div class="sub dim">Загружаю…</div></div></div>`;
+}
+function recBind(c) {
+  if (!c.share.write) return;
+  $('#rwk').onclick = () => recWorkout(c); $('#rml').onclick = () => recMeal(c); $('#rbd').onclick = () => recBody2(c);
+  sb.from('coach_entries').select('*').eq('link_id', c.link_id).order('created_at', { ascending: false }).limit(15).then(({ data }) => {
+    const box = $('#reclist'); if (!box) return; const nm = { workout: 'Тренировка', meal: 'Приём пищи', body: 'Замеры' };
+    box.innerHTML = (data || []).map(e => { const p = e.payload || {}; return `<div class="row"><div class="main"><b>${nm[e.kind] || ''}</b><div class="sub">${esc(e.kind === 'meal' ? s0(p.name, 60) : e.kind === 'workout' ? (Array.isArray(p.exercises) ? p.exercises.length : 0) + ' упр.' : '')} ${esc(okDay(p.date) ? dayLabel(p.date) : '')}</div></div><span class="tag ${e.applied_at ? 'train' : ''}">${e.applied_at ? 'в дневнике' : 'ждёт'}</span></div>`; }).join('') || '<div class="sub dim">Пока ничего не записано.</div>';
+  });
+}
+const recDate = id => `<label>Дата</label><input type="date" id="${id}" value="${CO.day || today()}" max="${shiftDay(today(), 1)}">`;
+function recWorkout(c, draft) {
+  draft = draft || { date: CO.day || today(), exercises: [] };
+  sheet(`<h2 class="sh">Тренировка · ${esc(c.name)}</h2>${recDate('rdt')}
+    ${draft.exercises.map((e, j) => `<div class="pexrow"><div class="pexn"><b>${esc(e.name)}</b><button class="btn del" data-rdel="${j}" aria-label="Убрать">${ic('x')}</button></div><input data-rp="${j}" value="${esc(e.plan)}" placeholder="вес×повторы: 80x8, 80x8, 80x6"></div>`).join('')}
+    <div class="btns" style="margin-top:8px"><button class="btn ghost" id="radd">${ic('plus')}Упражнение</button>${S.templates.filter(t => !t.coach).length ? `<button class="btn ghost" id="rtpl">${ic('list')}Из шаблона</button>` : ''}</div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="rok">${ic('right')}Записать</button></div>`, p => {
+    const sync = () => { draft.date = $('#rdt').value || draft.date; draft.exercises.forEach((e, j) => { e.plan = p.querySelector(`[data-rp="${j}"]`).value; }); };
+    $('#radd').onclick = () => { sync(); addExercise(name => { draft.exercises.push({ name, plan: '' }); recWorkout(c, draft); }); };
+    p.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { sync(); draft.exercises.splice(+b.dataset.rdel, 1); recWorkout(c, draft); });
+    if ($('#rtpl')) $('#rtpl').onclick = () => { sync(); const tp = S.templates.filter(t => !t.coach); sheet(`<h2 class="sh">Мои шаблоны</h2>${tp.map(t => `<div class="row pick" data-tp="${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${t.exercises.length} упр.</div></div><span class="btn sm ghost">${ic('plus')}</span></div>`).join('')}`, pn => {
+      pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = () => { tp.find(x => x.id === r.dataset.tp).exercises.forEach(e => draft.exercises.push({ name: e.name, plan: planText(e.plan) })); recWorkout(c, draft); });
+    }); };
+    $('#rok').onclick = () => {
+      sync(); const exercises = draft.exercises.map(e => ({ name: e.name, sets: parsePlan(e.plan) })).filter(e => e.sets.length);
+      if (!exercises.length) return toast('Добавьте упражнение и подходы, например 80x8, 80x8');
+      recSend(c, [{ kind: 'workout', data: { date: draft.date, exercises } }], $('#rok'));
+    };
+  });
+}
+function recMeal(c) {
+  sheet(`<h2 class="sh">Приём пищи · ${esc(c.name)}</h2>${recDate('rdt')}
+    <label>Приём</label><select id="rty">${MT.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
+    <label>Название</label><input id="rnm" maxlength="120" placeholder="Например: гречка с курицей" autocomplete="off">
+    <div class="grid2"><div><label>Граммы</label><input inputmode="decimal" id="rg"></div><div><label>Ккал</label><input inputmode="decimal" id="rk"></div><div><label>Белки, г</label><input inputmode="decimal" id="rpp"></div><div><label>Жиры, г</label><input inputmode="decimal" id="rf"></div><div><label>Углеводы, г</label><input inputmode="decimal" id="rcc"></div></div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="rok">${ic('right')}Записать</button></div>`, () => {
+    $('#rok').onclick = () => {
+      const name = $('#rnm').value.trim(), kcal = num($('#rk').value); if (!name || !(kcal > 0)) return toast('Укажите название и калории');
+      recSend(c, [{ kind: 'meal', data: { date: $('#rdt').value || today(), type: $('#rty').value, name, g: num($('#rg').value), kcal, p: num($('#rpp').value), f: num($('#rf').value), c: num($('#rcc').value) } }], $('#rok'));
+    };
+  });
+}
+function recBody2(c) {
+  sheet(`<h2 class="sh">Замеры · ${esc(c.name)}</h2>${recDate('rdt')}<div class="grid2">${MEAS.map(([k, n]) => `<div><label>${n}</label><input inputmode="decimal" data-rm="${k}"></div>`).join('')}</div>
+    <div class="btns" style="margin-top:14px"><button class="btn" id="rok">${ic('right')}Записать</button></div>`, () => {
+    $('#rok').onclick = () => {
+      const data = { date: $('#rdt').value || today() }; let any = false; document.querySelectorAll('[data-rm]').forEach(i => { const v = num(i.value); if (v > 0) { data[i.dataset.rm] = v; any = true; } });
+      if (!any) return toast('Заполните хотя бы одно значение'); recSend(c, [{ kind: 'body', data }], $('#rok'));
     };
   });
 }

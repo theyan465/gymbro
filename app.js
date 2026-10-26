@@ -5,7 +5,7 @@ const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
   trainDays: [1, 3, 5], dayType: {}, templates: [],
-  wgoal: { mode: 'hold', rate: 0.5 }, schedule: {}, coachNutrition: null, coachTraining: null,
+  wgoal: { mode: 'hold', rate: 0.5 }, schedule: {}, coachNutrition: null, coachTraining: null, coachTpl: { nutrition: [], training: [] }, coachApplied: [],
   rest: { on: true, sec: 90, sound: true }, plates: { bar: 20, list: [25, 20, 15, 10, 5, 2.5, 1.25] }, exMuscle: {},
   reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
@@ -265,7 +265,7 @@ let addType = null, foodChoose = null;
 const chooseFood = f => foodChoose ? foodChoose(f) : addMealSheet(f);
 function viewFood() {
   const t = sumMeals(day), g = goalFor(day), meals = S.meals.filter(m => m.date === day), dt = dayInfo(day);
-  const mealRow = m => `<div class="row ${isNew(m.id)}"><div class="main">${esc(m.name)}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
+  const mealRow = m => `<div class="row ${isNew(m.id)}"><div class="main">${esc(m.name)}${m.byCoach ? '<span class="tag train">тренер</span>' : ''}<div class="sub">${m.g} г · Б${r1(m.p)} Ж${r1(m.f)} У${r1(m.c)}</div></div><b>${Math.round(m.kcal)}</b><button class="btn del" data-delmeal="${m.id}">${ic('x')}</button></div>`;
   const groups = [...MT.map(([k, n]) => [k, n, meals.filter(m => m.type === k)]), ['', 'Без категории', meals.filter(m => !m.type)]].filter(([k, , l]) => k || l.length);
   $('#view').innerHTML = `
     <div class="toprow"><button class="daytype ${dt.train ? 'train' : 'rest'}" id="dt">${ic(dt.train ? 'bolt' : 'moon')}<span>${dt.train ? 'Тренировочный день' : 'День отдыха'}</span><small>${dt.src}</small></button>${streakChip('nutr')}</div>
