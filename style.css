@@ -495,3 +495,32 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .mgrid > div { padding: 4px 2px 3px; border-radius: 10px; }
 .mgrid b { font-size: 14px; } .mgrid small { font-size: 10px; margin-top: 0; }
 .mcard .mrow { padding: 9px 0 8px; } .mcard .mtop { margin-bottom: 5px; }
+
+/* ---- meal cards v3: quiet table (name | kcal | Ж | У | Б) ---- */
+.mcard .mgm, .mcard .mgrid { display: none; }
+.mcard { padding: 4px 16px 6px; border-radius: 22px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.mcard .mkc { margin-left: auto; padding-right: 4px; font-size: 12.5px; color: var(--dim); white-space: nowrap; }
+.mcard .mht { flex: 0 1 auto; }
+.mcard .mgh { gap: 10px; }
+.mcard .mcnt2 { margin-left: 2px; }
+.mcard .mgbody { margin: 2px 0 4px; }
+.mcard .mr { display: grid; grid-template-columns: minmax(0, 1fr) 44px 38px 38px 38px; align-items: center; column-gap: 4px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,.05); }
+.mcard .mr > * { text-align: right; font-variant-numeric: tabular-nums; }
+.mcard .mr .mrn { text-align: left; min-width: 0; }
+.mcard .mr .mn { font-size: 14.5px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.mcard .mr .mrn small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--dim); }
+.mcard .mr .k { font-size: 15px; font-weight: 700; }
+.mcard .mr .cf, .mcard .mr .cc, .mcard .mr .cp { font-size: 13px; font-weight: 600; }
+.mcard .mr .cf { color: var(--f); } .mcard .mr .cc { color: var(--c); } .mcard .mr .cp { color: var(--p); }
+.mcard .mr.mh2 { padding: 4px 0 6px; border-top: 0; }
+.mcard .mr.mh2 > * { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); opacity: .85; }
+.mcard .mr.mh2 .cf { color: var(--f); } .mcard .mr.mh2 .cc { color: var(--c); } .mcard .mr.mh2 .cp { color: var(--p); }
+.mcard .mr.mtot { border-top: 1px dashed rgba(255,255,255,.14); margin-top: 2px; padding: 9px 0 4px; }
+.mcard .mr.mtot > span:first-child { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.mcard .mr.mtot .k, .mcard .mr.mtot .cf, .mcard .mr.mtot .cc, .mcard .mr.mtot .cp { font-weight: 800; }
+.mcard .mr.pick:active { background: rgba(255,255,255,.03); }
+.mcard .mr { grid-template-columns: minmax(0, 1fr) 40px 34px 34px 34px; column-gap: 2px; }
+.mcard .mr .mn { font-size: 14px; }
+.mcard .mr .k { font-size: 14.5px; }
+.mcard .mr .cf, .mcard .mr .cc, .mcard .mr .cp { font-size: 12.5px; }
+.mcard .mr .mrn small .tag { margin-left: 8px; padding: 1px 7px; font-size: 10.5px; vertical-align: 1px; }
