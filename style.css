@@ -407,3 +407,4 @@ textarea#pn{width:100%;background:#0d1117;border:1px solid var(--line);color:var
 .pacts .btn { flex: 1 1 auto; margin: 0; }
 .pacts .btn { padding: 9px 12px; font-size: 14px; border-radius: 14px; }
 .pacts .btn svg { width: 17px; height: 17px; }
+.mgm { margin: 0 0 4px 28px; font-size: 12.5px; color: var(--dim); }
