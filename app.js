@@ -39,12 +39,12 @@ const $ = (s, r = document) => r.querySelector(s);
   document.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) { st = null; return; }
     const t = e.touches[0], inSheet = e.target.closest && e.target.closest('#sheet .panel');
-    st = { x: t.clientX, y: t.clientY, edge: t.clientX < 28, drag: !!inSheet && (e.target.closest('.sheet-bar') || inSheet.scrollTop <= 0) && !e.target.closest('input,textarea,select,canvas,.chips'), done: false };
+    st = { x: t.clientX, y: t.clientY, edge: t.clientX < 22, drag: !!inSheet && (e.target.closest('.sheet-bar') || t.clientY - inSheet.getBoundingClientRect().top < 36) && !e.target.closest('input,textarea,select,canvas,.chips,button:not(.sheet-x)'), done: false };
   }, { passive: true });
   document.addEventListener('touchmove', e => {
     if (!st || st.done) return; const t = e.touches[0], dx = t.clientX - st.x, dy = t.clientY - st.y;
-    if (st.edge && dx > 70 && Math.abs(dy) < dx * 0.6) { st.done = true; back(); }
-    else if (st.drag && dy > 110 && Math.abs(dx) < dy * 0.5) { st.done = true; closeSheet(); }
+    if (st.edge && dx > 90 && Math.abs(dy) < dx * 0.6) { st.done = true; back(); }
+    else if (st.drag && dy > 90 && Math.abs(dx) < dy * 0.5) { st.done = true; closeSheet(); }
   }, { passive: true });
   document.addEventListener('touchend', () => { st = null; }, { passive: true });
 })();
@@ -398,46 +398,48 @@ function copyMealsSheet(opts = {}) {
 function pickFood(opts = {}) {
   foodChoose = opts.onPick || null;
   const cloud = !!(sb && user), mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
-  let pt = 'mine', shared = [], shT = null, shSeq = 0;
+  let shared = [], shT = null, shSeq = 0;
   const sub = f => `${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
-  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
-  const srow = f => { const mine = !!findMine(f); return `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}${f.dish ? '<span class="tag dishtag">блюдо</span>' : ''}<div class="sub">${sub(f)}</div></div>${mine ? `<span class="tag train">${ic('check')}В моих</span>` : `<button class="btn sm ghost" data-sadd="${f.id}">${ic('plus')}В мои</button>`}</div>`; };
-  const draw = q => {
-    q = q.trim().toLowerCase();
-    let html;
+  const tags = f => f.dish ? '<span class="tag dishtag">блюдо</span>' : '';
+  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost">Выбрать</button></div>`;
+  const srow = f => `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost" data-sadd="${f.id}" aria-label="В избранное">${ic('plus')}В избранное</button></div>`;
+  const head = t => `<div class="dim small" style="margin:10px 0 0">${t}</div>`;
+  // one search over my foods (favourites) and the shared database
+  const draw = () => {
+    const q = $('#q').value.trim().toLowerCase(); let html;
     if (!q) {
       const recent = S.foods.filter(f => f.lastAt).sort((a, b) => b.lastAt - a.lastAt).slice(0, 6), ids = new Set(recent.map(f => f.id));
       const rest = S.foods.filter(f => !ids.has(f.id)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30);
-      html = (recent.length ? `<div class="dim small" style="margin:4px 0 0">Недавние</div>${recent.map(row).join('')}` : '') + (rest.length ? `<div class="dim small" style="margin:8px 0 0">${recent.length ? 'Остальные' : 'Мои продукты'}</div>${rest.map(row).join('')}` : '');
-    } else html = S.foods.filter(f => nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30).map(row).join('');
-    $('#flist').innerHTML = html || `<div class="empty">${S.foods.length ? 'Ничего не найдено в моих продуктах.' : 'В моих продуктах пока пусто.'}${cloud ? ' Загляните в «Общая база» или создайте новый.' : ''}</div>`;
+      html = (recent.length ? head('Недавние') + recent.map(row).join('') : '') + (rest.length ? head(recent.length ? 'Остальные' : 'Избранное') + rest.map(row).join('') : '');
+      if (!html) html = `<div class="empty">${cloud ? 'Начните вводить название: поиск идёт по избранному и по общей базе.' : 'В избранном пока пусто.'}</div>`;
+      else if (cloud) html += `<div class="sub dim" style="margin-top:10px">Начните вводить название: поиск идёт по избранному и по общей базе.</div>`;
+    } else {
+      const mine = S.foods.filter(f => nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30), other = shared.filter(f => !findMine(f));
+      html = (mine.length ? head('Избранное') + mine.map(row).join('') : '') + (cloud && q.length >= 2 ? (other.length ? head('Общая база') + other.map(srow).join('') : (loadingShared ? head('Общая база') + '<div class="sub dim" style="padding:6px 0">Ищу…</div>' : '')) : '');
+      if (!mine.length && !other.length && !loadingShared) html = '<div class="empty">Ничего не найдено. Создайте новый продукт или отсканируйте.</div>';
+    }
+    $('#flist').innerHTML = html;
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = () => chooseFood(S.foods.find(f => f.id === r.dataset.id)));
-  };
-  const drawShared = () => {
-    const box = $('#flist'); if (!box) return;
-    box.innerHTML = shared.length ? shared.map(srow).join('') : '<div class="empty">В общей базе ничего не найдено.</div>';
-    box.querySelectorAll('[data-sid]').forEach(r => r.onclick = e => {
+    document.querySelectorAll('#flist [data-sid]').forEach(r => r.onclick = e => {
       const x = shared.find(y => y.id === r.dataset.sid); if (!x) return;
-      if (e.target.closest('[data-sadd]')) { adoptShared(x); toast('Добавлено в мои продукты'); drawShared(); return; }
+      if (e.target.closest('[data-sadd]')) { adoptShared(x); toast('Добавлено в избранное'); draw(); return; }
       chooseFood(adoptShared(x));
     });
   };
+  let loadingShared = false;
   const loadShared = q => {
     clearTimeout(shT); const seq = ++shSeq; q = q.trim().replace(/[%_,()]/g, ' ');
-    $('#flist').innerHTML = '<div class="empty">Загрузка…</div>';
+    if (!cloud || q.length < 2) { shared = []; loadingShared = false; return; }
+    loadingShared = true;
     shT = setTimeout(async () => {
-      let qb = sb.from('shared_foods').select('*'); qb = q.length >= 2 ? qb.ilike('name', '%' + q + '%') : qb.order('created_at', { ascending: false });
-      const { data } = await qb.limit(40); if (seq !== shSeq || pt !== 'shared') return;
-      shared = (data || []).map(cleanShared); drawShared();
-    }, q ? 300 : 0);
+      const { data } = await sb.from('shared_foods').select('*').ilike('name', '%' + q + '%').limit(40);
+      if (seq !== shSeq || !$('#flist')) return; loadingShared = false; shared = (data || []).map(cleanShared); draw();
+    }, 300);
   };
-  const go = () => { const q = $('#q').value; document.querySelectorAll('#ptabs [data-pt]').forEach(b => b.classList.toggle('on', b.dataset.pt === pt)); pt === 'mine' ? draw(q) : loadShared(q); };
   sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2>
     <div class="pacts">${opts.onPick ? '' : `<button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button>`}<button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
-    ${cloud ? `<div class="seg" id="ptabs" style="margin-top:10px"><button data-pt="mine" class="on">Мои продукты</button><button data-pt="shared">Общая база</button></div>` : ''}
-    <input id="q" placeholder="Поиск..." autocomplete="off" style="margin-top:10px"><div id="flist" style="margin:8px 0"></div>`, () => {
-    draw(''); $('#q').oninput = e => { pt === 'mine' ? draw(e.target.value) : loadShared(e.target.value); };
-    document.querySelectorAll('#ptabs [data-pt]').forEach(b => b.onclick = () => { if (pt !== b.dataset.pt) { pt = b.dataset.pt; go(); } });
+    <input id="q" placeholder="${cloud ? 'Поиск: избранное и общая база' : 'Поиск...'}" autocomplete="off" style="margin-top:10px"><div id="flist" style="margin:8px 0"></div>`, () => {
+    draw(); $('#q').oninput = e => { loadShared(e.target.value); draw(); };
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = () => foodForm({ name: 'Быстрая запись', quick: true });
     if ($('#dish')) $('#dish').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
