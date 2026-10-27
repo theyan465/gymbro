@@ -116,12 +116,21 @@ let tab = 'home', day = today(), statSel = { ex: null, m: 'weight' }, animate = 
 // ---------- sheet ----------
 function sheet(html, mount) {
   const el = $('#sheet'), p = $('.panel', el);
-  p.innerHTML = `<div class="sheet-bar"><button class="sheet-x" aria-label="Закрыть">${ic('x')}</button></div>` + html; el.hidden = false;
+  p.innerHTML = `<div class="sheet-bar"><button class="sheet-x" aria-label="Закрыть">${ic('x')}</button></div>` + html; el.hidden = false; document.documentElement.classList.add('sheet-open');
   $('.sheet-x', p).onclick = closeSheet;
   mount && mount(p);
   return p;
 }
-function closeSheet() { $('#sheet').hidden = true; $('#sheet .panel').innerHTML = ''; stopScanner(); }
+// keep the sheet above the on-screen keyboard (iOS shrinks only the visual viewport): --kb = keyboard height, --vvh = visible height
+if (window.visualViewport) {
+  const vv = window.visualViewport, fit = () => {
+    const sh = document.getElementById('sheet'); if (!sh) return;
+    sh.style.setProperty('--kb', Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px'); sh.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+  };
+  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+  document.addEventListener('focusin', e => { if (e.target.closest && e.target.closest('#sheet .panel') && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(() => { fit(); try { e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* old browser */ } }, 320); });
+}
+function closeSheet() { document.documentElement.classList.remove('sheet-open'); $('#sheet').hidden = true; $('#sheet .panel').innerHTML = ''; stopScanner(); }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
 
 // ---------- feedback: toast, button check, new-item highlight ----------
