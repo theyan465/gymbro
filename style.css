@@ -556,3 +556,8 @@ input, select, textarea { font-size: 16px !important; }
 #sheet { inset: 0 0 var(--kb, 0px) 0; }
 #sheet .panel { max-height: min(90vh, calc(var(--vvh, 100vh) - 14px)); overscroll-behavior: contain; }
 html.sheet-open, html.sheet-open body { overflow: hidden; }
+
+/* floating bars follow the visible area (see --vvb/--vvl/--vvr in app.js) */
+#tabs { bottom: calc(8px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(10px + var(--vvl, 0px)); right: calc(10px + var(--vvr, 0px)); }
+#toast { bottom: calc(96px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(50% + (var(--vvl, 0px) - var(--vvr, 0px)) / 2); }
+#rest { bottom: calc(150px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(50% + (var(--vvl, 0px) - var(--vvr, 0px)) / 2); }
