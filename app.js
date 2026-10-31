@@ -127,6 +127,14 @@ if (window.visualViewport) {
     const sh = document.getElementById('sheet'); if (!sh) return;
     sh.style.setProperty('--kb', Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px'); sh.style.setProperty('--vvh', Math.round(vv.height) + 'px');
   };
+  // floating bars (tabs, rest timer, toast) must stay in the visible area even when the layout viewport is larger/offset
+  // (landscape, dual-screen, address bar changes): --vvb/--vvl/--vvr compensate the hidden part. Not while typing: the keyboard covers the bar.
+  const bars = () => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName), r = document.documentElement.style;
+    const b = typing ? 0 : Math.max(0, Math.round(window.innerHeight - (vv.offsetTop + vv.height)));
+    r.setProperty('--vvb', b + 'px'); r.setProperty('--vvl', Math.max(0, Math.round(vv.offsetLeft)) + 'px'); r.setProperty('--vvr', Math.max(0, Math.round(window.innerWidth - vv.offsetLeft - vv.width)) + 'px');
+  };
+  vv.addEventListener('resize', bars); vv.addEventListener('scroll', bars); window.addEventListener('scroll', bars, { passive: true }); window.addEventListener('orientationchange', () => setTimeout(bars, 300)); document.addEventListener('focusout', () => setTimeout(bars, 50)); bars();
   vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
   document.addEventListener('focusin', e => { if (e.target.closest && e.target.closest('#sheet .panel') && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) setTimeout(() => { fit(); try { e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* old browser */ } }, 320); });
 }
