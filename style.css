@@ -561,3 +561,20 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 #tabs { bottom: calc(8px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(10px + var(--vvl, 0px)); right: calc(10px + var(--vvr, 0px)); }
 #toast { bottom: calc(96px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(50% + (var(--vvl, 0px) - var(--vvr, 0px)) / 2); }
 #rest { bottom: calc(150px + env(safe-area-inset-bottom) + var(--vvb, 0px)); left: calc(50% + (var(--vvl, 0px) - var(--vvr, 0px)) / 2); }
+
+/* ---- narrow phones / folded dual-screen: keep the tab labels apart ---- */
+#tabs button { min-width: 0; }
+#tabs button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(9px, 2.55vw, 11px); letter-spacing: -.1px; padding: 0 1px; }
+@media (max-width: 420px) { #tabs { padding: 6px 2px; } #tabs button span { font-size: 9.5px; } }
+
+/* ---- wide windows (landscape, tablets, spanned screens): a comfortable column, not a stretched layout ---- */
+@media (min-width: 720px) {
+  #top, #view { max-width: 680px; margin-left: auto; margin-right: auto; }
+  #tabs { max-width: 680px; margin-left: auto; margin-right: auto; }
+}
+/* dual-screen (Surface Duo class) spanned over both screens: stay on the first screen */
+@media (horizontal-viewport-segments: 2) {
+  #top, #view { max-width: env(viewport-segment-width 0 0, 100vw); margin-left: 0; margin-right: 0; }
+  #tabs { max-width: none; margin: 0; right: calc(100vw - env(viewport-segment-right 0 0, 100vw) + 10px + var(--vvr, 0px)); }
+}
+@media (max-width: 380px) { #tabs button:not(.on) span { display: none; } #tabs button { padding: 10px 0 8px; } #tabs button.on span { font-size: 10px; } }
