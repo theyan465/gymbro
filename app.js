@@ -5,7 +5,7 @@ const KEY = 'gymbro.v1';
 const DEFAULTS = {
   foods: [], meals: [], goals: { kcal: 2200, p: 150, f: 70, c: 250 }, goalsRest: { kcal: 2000, p: 150, f: 65, c: 200 },
   trainDays: [1, 3, 5], dayType: {}, templates: [],
-  wgoal: { mode: 'hold', rate: 0.5 }, schedule: {}, coachNutrition: null, coachTraining: null, coachTpl: { nutrition: [], training: [] }, coachApplied: [],
+  wgoal: { mode: 'hold', rate: 0.5 }, schedule: {}, coachNutrition: null, coachTraining: null, coachTpl: { nutrition: [], training: [] }, coachApplied: [], exLinks: {},
   rest: { on: true, sec: 90, sound: true }, plates: { bar: 20, list: [25, 20, 15, 10, 5, 2.5, 1.25] }, exMuscle: {},
   reminders: { on: false, vit: true, train: { on: true, time: '18:00' }, food: { on: true, time: '20:30' }, weigh: { on: false, day: 1, time: '08:00' } }, vitamins: [], vitLog: {}, workouts: [], body: [], updatedAt: 0,
 };
@@ -70,6 +70,8 @@ const e1rm = (w, r) => r <= 0 ? 0 : r === 1 ? w : w * (1 + r / 30); // Epley
 
 // ---------- icons ----------
 const ICONS = {
+  play: '<path d="M8 5.5v13l11-6.5z"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   dots: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
   utensils: '<path d="M3 2v7a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6a2 2 0 0 0 2 2h3zm0 0v7"/>',
@@ -1068,6 +1070,29 @@ function getWorkout(create) {
   return w;
 }
 
+// video links per exercise name (YouTube / Instagram / any https page) and supersets ("with the previous exercise, no rest in between")
+const cleanUrl = u => { u = String(u || '').trim(); if (!u || /\s/.test(u)) return ''; if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u; if (!/^https?:\/\/[^\s/$.?#][^\s]*$/i.test(u) || u.length > 500) return ''; try { return new URL(u).hostname.includes('.') ? u : ''; } catch { return ''; } };
+const exLink = name => cleanUrl((S.exLinks || {})[name]);
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+const vidChip = (name, cls = '') => { const u = exLink(name); return u ? `<a class="vchip ${cls}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" aria-label="Видео">${ic('play')}Видео</a>` : ''; };
+function exLinkSheet(name, after) {
+  const cur = exLink(name);
+  sheet(`<h2 class="sh">Видео · ${esc(name)}</h2><div class="dim small">Ссылка на YouTube, Instagram или любую страницу с техникой выполнения. По нажатию «Видео» она откроется в браузере или приложении.</div>
+    <label>Ссылка</label><div class="bcrow"><input id="vl" inputmode="url" autocapitalize="none" autocorrect="off" value="${esc(cur)}" placeholder="https://youtube.com/…"><button class="btn ghost sm" id="vpaste" type="button">${ic('copy')}Вставить</button></div>
+    <div id="verr" class="sub warn" style="margin-top:6px"></div>
+    <div class="btns" style="margin-top:12px"><button class="btn" id="vok">Сохранить</button>${cur ? `<a class="btn ghost" href="${esc(cur)}" target="_blank" rel="noopener noreferrer">${ic('play')}Открыть</a><button class="btn ghost danger" id="vdel" type="button">Удалить</button>` : ''}</div>`, () => {
+    $('#vpaste').onclick = async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch { t = prompt('Вставьте ссылку:') || ''; } const m = /https?:\/\/\S+/i.exec(t) || [t.trim()]; if (m[0]) $('#vl').value = m[0]; };
+    $('#vok').onclick = () => { const raw = $('#vl').value.trim(), u = cleanUrl(raw); if (raw && !u) return ($('#verr').textContent = 'Это не похоже на ссылку. Пример: https://youtube.com/watch?v=…'); S.exLinks = S.exLinks || {}; if (u) S.exLinks[name] = u; else delete S.exLinks[name]; save(); okBtn($('#vok'), () => { closeSheet(); render(); after && after(); }, u ? 'Ссылка сохранена' : 'Ссылка удалена'); };
+    if ($('#vdel')) $('#vdel').onclick = () => { delete S.exLinks[name]; save(); closeSheet(); render(); after && after(); toast('Ссылка удалена'); };
+  });
+}
+// supersets: consecutive exercises with withPrev form a group A1, A2, … (B1, B2 …)
+function ssInfo(exs) {
+  const out = []; let g = -1, pos = 0;
+  exs.forEach((e, i) => { if (i > 0 && e.withPrev) pos++; else { g++; pos = 0; } out.push({ g, pos }); });
+  const size = {}; out.forEach(o => { size[o.g] = (size[o.g] || 0) + 1; });
+  return out.map(o => ({ ...o, size: size[o.g], label: size[o.g] > 1 ? String.fromCharCode(65 + o.g % 26) + (o.pos + 1) : '' }));
+}
 // exercises marked as finished are shown compact; tap to open them again (and edit sets)
 const openEx = new Set();
 function editSetSheet(w, i, j) {
@@ -1080,7 +1105,7 @@ function editSetSheet(w, i, j) {
 }
 function viewTrain() {
   const w = getWorkout(false), exs = w ? w.exercises : [];
-  const vol = exs.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0);
+  const vol = exs.reduce((a, e) => a + e.sets.reduce((s, x) => s + x.w * x.r, 0), 0), ss = ssInfo(exs);
   $('#view').innerHTML = `
     ${streakChip('train', 'тренировок подряд по плану')}
     ${typeof coachTrainCard === 'function' ? coachTrainCard(day) : ''}
@@ -1094,7 +1119,9 @@ function viewTrain() {
       const nxt = (e.plan && e.plan[e.sets.length]) || e.sets[e.sets.length - 1] || (hist && hist.ex.sets[0]) || { w: '', r: '' };
       const open = !e.done || openEx.has(day + ':' + i), cur = !e.done && exs.findIndex(x => !x.done) === i && exs.some(x => x.done), evol = Math.round(e.sets.reduce((a, s) => a + s.w * s.r, 0));
       if (!open) return `<div class="card exdone ${isNew('ex' + i)}" data-reopen="${i}" role="button"><h2><span class="exok">${ic('check')}${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}</span><small>${e.sets.length} ${plural(e.sets.length, ['подход', 'подхода', 'подходов'])} · ${evol} кг</small></h2></div>`;
-      return `<div class="card ${cur ? 'excur' : ''} ${isNew('ex' + i)}"><h2><span>${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}${e.done ? '<span class="tag train">Завершено</span>' : ''}</span><span class="exbtns">${e.done ? `<button class="btn sm ghost" data-fold="${i}">Свернуть</button>` : `<button class="btn sm ghost" data-finish="${i}">${ic('check')}Завершить</button>`}<button class="btn del" data-delex="${i}">${ic('x')}</button></span></h2>
+      const si = ss[i], vch = vidChip(e.name);
+      return `<div class="card ${cur ? 'excur' : ''} ${si.size > 1 ? 'inss ss' + (si.pos === 0 ? 'first' : si.pos === si.size - 1 ? 'last' : 'mid') : ''} ${isNew('ex' + i)}"><h2><span>${si.label ? `<span class="ssb">${si.label}</span>` : ''}${esc(e.name)}${best > prev && prev > 0 ? '<span class="pr">PR</span>' : ''}${e.done ? '<span class="tag train">Завершено</span>' : ''}</span><span class="exbtns">${e.done ? `<button class="btn sm ghost" data-fold="${i}">Свернуть</button>` : `<button class="btn sm ghost" data-finish="${i}">${ic('check')}Завершить</button>`}<button class="btn del" data-delex="${i}">${ic('x')}</button></span></h2>
+        <div class="exmeta">${vch || `<button class="vchip add" data-vlink="${i}" type="button">${ic('link')}Видео</button>`}${vch ? `<button class="vchip edit" data-vlink="${i}" type="button" aria-label="Изменить ссылку">${ic('edit')}</button>` : ''}${i > 0 ? `<button class="vchip ss ${e.withPrev ? 'on' : ''}" data-ss="${i}" type="button">${ic('link')}${e.withPrev ? 'Суперсет с предыдущим' : 'Суперсет с предыдущим?'}</button>` : ''}</div>
         ${e.plan && e.plan.length ? `<div class="plan"><span class="dim">План:</span>${e.plan.map((x, j) => `<span class="pl ${j < e.sets.length ? 'ok' : ''}">${x.w}×${x.r}</span>`).join('')}</div>` : ''}
         ${hist ? `<div class="sub dim" style="margin-bottom:6px">Прошлый раз (${fmtDay(hist.date)}): ${hist.ex.sets.map(s => s.w + '×' + s.r).join(', ')}</div>` : ''}
         ${e.sets.map((s, j) => `<div class="row pick ${isNew(i + '.' + j)}" data-editset="${i}.${j}"><div class="main"><b class="sn">${j + 1}</b><span class="sv"><b>${s.w}</b> кг × <b>${s.r}</b></span></div><span class="orm">1ПМ ≈ ${Math.round(e1rm(s.w, s.r))}</span><button class="btn del" data-delset="${i}.${j}">${ic('x')}</button></div>`).join('')}
@@ -1109,8 +1136,10 @@ function viewTrain() {
   document.querySelectorAll('[data-plan-start]').forEach(b => b.onclick = () => applyTemplate(b.dataset.planStart));
   document.querySelectorAll('[data-addset]').forEach(b => b.onclick = () => {
     const i = +b.dataset.addset, wv = num($(`[data-w="${i}"]`).value), rv = Math.round(num($(`[data-r="${i}"]`).value));
-    if (rv <= 0) return; unlockAudio(); w.exercises[i].sets.push({ w: wv, r: rv }); save(); startRest(S.rest.sec);
-    const key = i + '.' + (w.exercises[i].sets.length - 1); okBtn(b, () => renderNew(key));
+    if (rv <= 0) return; unlockAudio(); w.exercises[i].sets.push({ w: wv, r: rv }); save();
+    const nextIn = w.exercises[i + 1] && w.exercises[i + 1].withPrev;      // the next exercise is part of the same superset: go straight on, rest after the last one
+    if (!nextIn) startRest(S.rest.sec); else toast('Без отдыха: дальше ' + w.exercises[i + 1].name);
+    const key = i + '.' + (w.exercises[i].sets.length - 1); okBtn(b, () => { renderNew(key); if (nextIn) { const nx = document.querySelector(`[data-w="${i + 1}"]`); if (nx) { nx.scrollIntoView({ block: 'center', behavior: 'smooth' }); } } });
   });
   document.querySelectorAll('[data-plate]').forEach(b => b.onclick = () => {
     const i = +b.dataset.plate, inp = $(`[data-w="${i}"]`);
@@ -1123,9 +1152,11 @@ function viewTrain() {
     e.done = true; openEx.delete(day + ':' + i); save(); stopRest(); toast('Упражнение завершено'); render();
     const c = document.querySelector('.excur'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
+  document.querySelectorAll('[data-vlink]').forEach(b => b.onclick = () => exLinkSheet(w.exercises[+b.dataset.vlink].name));
+  document.querySelectorAll('[data-ss]').forEach(b => b.onclick = () => { const i = +b.dataset.ss; w.exercises[i].withPrev = !w.exercises[i].withPrev; save(); render(); toast(w.exercises[i].withPrev ? 'Суперсет: без отдыха между упражнениями' : 'Суперсет убран'); });
   document.querySelectorAll('[data-fold]').forEach(b => b.onclick = () => { openEx.delete(day + ':' + b.dataset.fold); render(); });
   document.querySelectorAll('[data-reopen]').forEach(c => c.onclick = () => { openEx.add(day + ':' + c.dataset.reopen); render(); });
-  document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { w.exercises.splice(+b.dataset.delex, 1); save(); render(); } });
+  document.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { if (confirm('Удалить упражнение?')) { const di = +b.dataset.delex, head = !w.exercises[di].withPrev; w.exercises.splice(di, 1); if (head && w.exercises[di]) w.exercises[di].withPrev = false; save(); render(); } });
 }
 const BASE_EX = ['Жим лёжа', 'Жим лёжа на наклонной скамье', 'Жим гантелей лёжа', 'Жим гантелей на наклонной скамье', 'Разводка гантелей', 'Отжимания', 'Отжимания на брусьях',
   'Присед со штангой', 'Фронтальный присед', 'Жим ногами', 'Выпады', 'Болгарские сплит-приседы', 'Разгибания ног', 'Сгибания ног', 'Румынская тяга', 'Ягодичный мостик', 'Подъём на носки',
@@ -1173,7 +1204,7 @@ function parsePlan(text) {
 function applyTemplate(id) {
   const t = S.templates.find(x => x.id === id); if (!t) return;
   const w = getWorkout(true);
-  t.exercises.forEach(e => w.exercises.push({ name: e.name, sets: [], plan: e.plan.map(x => ({ ...x })) }));
+  t.exercises.forEach((e, k) => { w.exercises.push({ name: e.name, sets: [], plan: e.plan.map(x => ({ ...x })), ...(e.withPrev && k > 0 ? { withPrev: true } : {}) }); if (e.link && !exLink(e.name)) { S.exLinks = S.exLinks || {}; S.exLinks[e.name] = cleanUrl(e.link); } });
   save(); closeSheet(); render(); toast('Шаблон применён');
 }
 function tplList() {
@@ -1181,7 +1212,7 @@ function tplList() {
     ${S.templates.length ? S.templates.map(t => `<div class="row"><div class="main"><b>${esc(t.name)}</b><div class="sub">${t.exercises.length} упр. · ${esc(t.exercises.map(e => e.name).join(', ')).slice(0, 70)}</div></div><button class="btn sm" data-use="${t.id}">Применить</button><button class="btn del" data-edit="${t.id}" aria-label="Изменить">${ic('edit')}</button></div>`).join('') : '<div class="empty">Пока нет шаблонов. Создайте новый или сохраните сегодняшнюю тренировку как шаблон.</div>'}
     <div class="btns" style="margin-top:12px"><button class="btn ghost" id="newtpl">${ic('plus')}Новый шаблон</button></div>`, p => {
     p.querySelectorAll('[data-use]').forEach(b => b.onclick = () => applyTemplate(b.dataset.use));
-    p.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const t = S.templates.find(x => x.id === b.dataset.edit); tplEditor({ id: t.id, name: t.name, exercises: t.exercises.map(e => ({ name: e.name, plan: e.plan.map(x => ({ ...x })) })) }); });
+    p.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const t = S.templates.find(x => x.id === b.dataset.edit); tplEditor({ id: t.id, name: t.name, exercises: t.exercises.map(e => ({ name: e.name, plan: e.plan.map(x => ({ ...x })), withPrev: !!e.withPrev })) }); });
     $('#newtpl').onclick = () => tplEditor({ name: '', exercises: [] });
   });
 }
@@ -1189,11 +1220,14 @@ function tplEditor(draft) {
   sheet(`<h2 class="sh">${draft.id ? 'Шаблон' : 'Новый шаблон'}</h2>
     <label>Название</label><input id="tn" value="${esc(draft.name)}" placeholder="Например: Грудь + трицепс">
     ${draft.exercises.map((e, i) => `<div class="tex"><div class="th"><b>${esc(e.name)}</b><button class="btn del" data-rm="${i}" aria-label="Убрать">${ic('x')}</button></div>
-      <input data-plan="${i}" value="${esc(planText(e.plan))}" placeholder="вес×повторы: 80×8, 80×8, 80×6"></div>`).join('') || '<div class="empty">Добавьте упражнения</div>'}
+      <input data-plan="${i}" value="${esc(planText(e.plan))}" placeholder="вес×повторы: 80×8, 80×8, 80×6">
+      <div class="exmeta"><button class="vchip ${exLink(e.name) ? 'on' : 'add'}" data-tlink="${i}" type="button">${ic('link')}${exLink(e.name) ? 'Видео ✓' : 'Видео'}</button>${i > 0 ? `<button class="vchip ss ${e.withPrev ? 'on' : ''}" data-tss="${i}" type="button">${ic('link')}${e.withPrev ? 'Суперсет с предыдущим' : 'Суперсет с предыдущим?'}</button>` : ''}</div></div>`).join('') || '<div class="empty">Добавьте упражнения</div>'}
     <button class="btn ghost" id="tadd" style="margin-top:8px">${ic('plus')}Упражнение</button>
     <div class="btns" style="margin-top:14px"><button class="btn" id="tsave">Сохранить</button>${draft.id ? '<button class="btn ghost danger" id="tdel">Удалить шаблон</button>' : ''}<button class="btn ghost" id="tback">К списку</button></div>`, p => {
     const sync = () => { draft.name = $('#tn').value; p.querySelectorAll('[data-plan]').forEach(i => { draft.exercises[+i.dataset.plan].plan = parsePlan(i.value); }); };
-    p.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sync(); draft.exercises.splice(+b.dataset.rm, 1); tplEditor(draft); });
+    p.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sync(); draft.exercises.splice(+b.dataset.rm, 1); if (draft.exercises[0]) draft.exercises[0].withPrev = false; tplEditor(draft); });
+    p.querySelectorAll('[data-tss]').forEach(b => b.onclick = () => { sync(); const e = draft.exercises[+b.dataset.tss]; e.withPrev = !e.withPrev; tplEditor(draft); });
+    p.querySelectorAll('[data-tlink]').forEach(b => b.onclick = () => { sync(); exLinkSheet(draft.exercises[+b.dataset.tlink].name, () => tplEditor(draft)); });
     $('#tadd').onclick = () => { sync(); addExercise(name => { draft.exercises.push({ name, plan: [] }); tplEditor(draft); }); };
     $('#tback').onclick = tplList;
     $('#tsave').onclick = () => {
@@ -1213,7 +1247,7 @@ function saveAsTemplate() {
     <div class="btns" style="margin-top:14px"><button class="btn" id="tsave">Сохранить</button></div>`, () => {
     $('#tsave').onclick = () => {
       const name = $('#tn').value.trim(); if (!name) return $('#tn').focus();
-      const exercises = w.exercises.map(e => ({ name: e.name, plan: (e.sets.length ? e.sets : e.plan || []).map(x => ({ w: x.w, r: x.r })) }));
+      const exercises = w.exercises.map(e => ({ name: e.name, plan: (e.sets.length ? e.sets : e.plan || []).map(x => ({ w: x.w, r: x.r })), ...(e.withPrev ? { withPrev: true } : {}) }));
       const ex = S.templates.find(t => t.name.toLowerCase() === name.toLowerCase());
       if (ex) { if (!confirm('Шаблон с таким названием уже есть. Обновить его?')) return; ex.exercises = exercises; } else S.templates.push({ id: uid(), name, exercises });
       save(); okBtn($('#tsave'), () => { closeSheet(); render(); }, 'Шаблон сохранён');
