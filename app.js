@@ -1219,7 +1219,7 @@ function tplList() {
 function tplEditor(draft) {
   sheet(`<h2 class="sh">${draft.id ? 'Шаблон' : 'Новый шаблон'}</h2>
     <label>Название</label><input id="tn" value="${esc(draft.name)}" placeholder="Например: Грудь + трицепс">
-    ${draft.exercises.map((e, i) => `<div class="tex"><div class="th"><b>${esc(e.name)}</b><button class="btn del" data-rm="${i}" aria-label="Убрать">${ic('x')}</button></div>
+    ${draft.exercises.map((e, i) => `<div class="tex"><div class="texh"><b>${esc(e.name)}</b><button class="btn del" data-rm="${i}" aria-label="Убрать">${ic('x')}</button></div>
       <input data-plan="${i}" value="${esc(planText(e.plan))}" placeholder="вес×повторы: 80×8, 80×8, 80×6">
       <div class="exmeta"><button class="vchip ${exLink(e.name) ? 'on' : 'add'}" data-tlink="${i}" type="button">${ic('link')}${exLink(e.name) ? 'Видео ✓' : 'Видео'}</button>${i > 0 ? `<button class="vchip ss ${e.withPrev ? 'on' : ''}" data-tss="${i}" type="button">${ic('link')}${e.withPrev ? 'Суперсет с предыдущим' : 'Суперсет с предыдущим?'}</button>` : ''}</div></div>`).join('') || '<div class="empty">Добавьте упражнения</div>'}
     <button class="btn ghost" id="tadd" style="margin-top:8px">${ic('plus')}Упражнение</button>
