@@ -521,14 +521,14 @@ function pickFood(opts = {}) {
     }, 300);
   };
   sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2>
-    <div class="pacts">${opts.onPick ? '' : `<button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button>`}<button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
+    <div class="pacts"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
     <input id="q" placeholder="${cloud ? 'Поиск: избранное и общая база' : 'Поиск...'}" autocomplete="off" style="margin-top:10px"><div id="flist" style="margin:8px 0"></div>`, () => {
     draw(); $('#q').oninput = e => { loadShared(e.target.value); draw(); };
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = quickEntry;
     if ($('#dish')) $('#dish').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
-    if ($('#pscan')) $('#pscan').onclick = () => scanBarcode();
-    if ($('#pocr')) $('#pocr').onclick = () => ocrLabel();
+    if ($('#pscan')) $('#pscan').onclick = () => scanBarcode(opts.onPick ? code => lookupBarcode(code, opts.onPick) : undefined);
+    if ($('#pocr')) $('#pocr').onclick = () => ocrLabel(opts.onPick ? { onSave: opts.onPick } : {});
   });
 }
 
@@ -797,13 +797,13 @@ function scanBarcode(cb) {
       .catch(err => { clearTimeout(hint); $('#msg').textContent = 'Камера недоступна (' + (err && err.message || err) + '). Разрешите доступ к камере в настройках Safari или снимите штрихкод на фото.'; });
   });
 }
-async function lookupBarcode(code) {
+async function lookupBarcode(code, onPick) {
   const known = S.foods.find(f => f.barcode === code);
-  if (known) return addMealSheet(known);
+  if (known) return onPick ? onPick(known) : addMealSheet(known);
   sheet(`<div class="empty">Ищу ${esc(code)}…</div>`);
   if (sb && user) {
     const { data } = await sb.from('shared_foods').select('*').eq('barcode', code).maybeSingle();
-    if (data) return addMealSheet(adoptShared(cleanShared(data)));
+    if (data) { const fd = adoptShared(cleanShared(data)); return onPick ? onPick(fd) : addMealSheet(fd); }
   }
   let found = null;
   try {
@@ -815,8 +815,8 @@ async function lookupBarcode(code) {
       found = { name: [j.product.product_name, j.product.brands].filter(Boolean).join(' — '), kcal: Math.round(kcal), p: r1(n.proteins_100g || 0), f: r1(n.fat_100g || 0), c: r1(n.carbohydrates_100g || 0), barcode: code };
     }
   } catch { /* offline or not found */ }
-  if (found && (found.kcal || found.p || found.f || found.c)) return foodForm(found);
-  const pre = { name: found ? found.name : '', barcode: code };
+  if (found && (found.kcal || found.p || found.f || found.c)) return foodForm(onPick ? { ...found, onSave: onPick } : found);
+  const pre = { name: found ? found.name : '', barcode: code, ...(onPick ? { onSave: onPick } : {}) };
   sheet(`<h2 class="sh">${found ? 'Нет данных о КБЖУ' : 'Товар не найден'}</h2>
     <div class="dim">${found ? `Нашёл «${esc(found.name)}», но без КБЖУ.` : `Штрихкода ${esc(code)} нет в базах или нет сети.`} Сфотографируйте таблицу пищевой ценности на упаковке, потом введёте название, и продукт сохранится вместе со штрихкодом.</div>
     <div class="btns" style="margin-top:14px"><button class="btn" id="lab">${ic('file')}Сфотографировать этикетку</button><button class="btn ghost" id="m">Ввести вручную</button></div>`, () => {
