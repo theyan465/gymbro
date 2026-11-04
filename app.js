@@ -483,7 +483,7 @@ function pickFood(opts = {}) {
   const ph = () => ptab === 'd' ? 'Поиск по блюдам' : cloud ? 'Поиск: избранное и общая база' : 'Поиск...';
   const sub = f => `${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
   const tags = f => f.dish ? '<span class="tag dishtag">блюдо</span>' : '';
-  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div>${f.dish ? `<button class="btn del" data-editdish="${f.id}" aria-label="Изменить блюдо">${ic('edit')}</button>` : ''}<button class="btn sm qadd" data-qadd="${f.id}" aria-label="Добавить сразу">${ic('plus')}${portionOf(f)} г</button></div>`;
+  const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div>${f.dish ? `<button class="btn del" data-editdish="${f.id}" aria-label="Изменить блюдо">${ic('edit')}</button>` : `<button class="btn del" data-editfood="${f.id}" aria-label="Изменить продукт">${ic('edit')}</button>`}<button class="btn sm qadd" data-qadd="${f.id}" aria-label="Добавить сразу">${ic('plus')}${portionOf(f)} г</button></div>`;
   const srow = f => `<div class="row" data-sid="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div><button class="btn sm ghost" data-sadd="${f.id}" aria-label="В избранное">${ic('plus')}В избранное</button></div>`;
   const head = t => `<div class="dim small" style="margin:10px 0 0">${t}</div>`;
   // one search over my foods (favourites) and the shared database
@@ -512,7 +512,8 @@ function pickFood(opts = {}) {
     if ($('#dnew')) $('#dnew').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
     if ($('#todish')) $('#todish').onclick = () => { ptab = 'd'; $('#q').placeholder = ph(); draw(); };
     document.querySelectorAll('#flist [data-qadd]').forEach(b => b.onclick = e => { e.stopPropagation(); const f = S.foods.find(x => x.id === b.dataset.qadd); if (f) { quickAdd(f); draw(); } });
-    document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = e => { if (e.target.closest('[data-editdish],[data-qadd]')) return; chooseFood(S.foods.find(f => f.id === r.dataset.id)); });
+    document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = e => { if (e.target.closest('[data-editdish],[data-editfood],[data-qadd]')) return; chooseFood(S.foods.find(f => f.id === r.dataset.id)); });
+    document.querySelectorAll('#flist [data-editfood]').forEach(b => b.onclick = e => { e.stopPropagation(); const f = S.foods.find(x => x.id === b.dataset.editfood); if (f) foodForm({ ...f, isEdit: true, mode: '100' }); });
     document.querySelectorAll('#flist [data-editdish]').forEach(b => b.onclick = e => { e.stopPropagation(); dishEditor(dishDraft(S.foods.find(f => f.id === b.dataset.editdish))); });
     document.querySelectorAll('#flist [data-sid]').forEach(r => r.onclick = e => {
       const x = shared.find(y => y.id === r.dataset.sid); if (!x) return;
@@ -555,6 +556,8 @@ function askGrams(food, cb) {
     $('#ag').onkeydown = e => { if (e.key === 'Enter') $('#agok').click(); };
   });
 }
+// a renamed product/dish keeps its logged entries in sync (only entries that still carry the old name)
+const renameInMeals = (food, was) => { if (food.name !== was) S.meals.forEach(m => { if (m.fid === food.id && m.name === was) m.name = food.name; }); };
 function dishEditor(draft) {
   const one = !!draft.oneOff;
   sheet(`<h2 class="sh">${one ? 'Состав на этот раз' : draft.id ? 'Блюдо' : 'Новое блюдо'}</h2>
@@ -565,7 +568,7 @@ function dishEditor(draft) {
     <label>Вес готового блюда, г <small class="dim">— если при готовке вес меняется</small></label><input id="dcook" inputmode="decimal" value="${draft.cooked || ''}" placeholder="по умолчанию сумма продуктов">
     <label>Порций в блюде <small class="dim">— необязательно</small></label><input id="dsrv" inputmode="decimal" value="${draft.servings || ''}" placeholder="например: 4">
     <div class="dsum" id="dsum"></div>
-    ${!one && !draft.id && sb && user ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="dshare" style="width:auto"> Добавить в общую базу</label>` : ''}
+    ${!one && !draft.id && sb && user ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="dshare" style="width:auto" checked> Добавить в общую базу</label>` : ''}
     <div class="btns" style="margin-top:14px"><button class="btn" id="dsave">${one ? 'Добавить в дневник' : draft.id ? 'Сохранить блюдо' : 'Сохранить блюдо'}</button></div>`, p => {
     const sync = () => { if ($('#dn')) draft.name = $('#dn').value; draft.cooked = $('#dcook').value; draft.servings = $('#dsrv').value; };
     const upd = () => {
@@ -589,7 +592,7 @@ function dishEditor(draft) {
       const vals = { name: draft.name.trim(), kcal: Math.round(t.kcal * 100 / t.w), p: r1(t.p * 100 / t.w), f: r1(t.f * 100 / t.w), c: r1(t.c * 100 / t.w), dish: { items: draft.items.map(i => ({ ...i })), cooked: num(draft.cooked) || 0, servings: N } };
       if (N) vals.serving = r1(t.w / N);
       let food = draft.id && S.foods.find(x => x.id === draft.id), oldW = 0;
-      if (food) { oldW = dishTotals({ items: food.dish.items, cooked: food.dish.cooked }).w; Object.assign(food, vals); if (!N) delete food.serving; food.lastG = Math.round(t.w); } else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); if ($('#dshare') && $('#dshare').checked) shareFood(food); }
+      if (food) { oldW = dishTotals({ items: food.dish.items, cooked: food.dish.cooked }).w; const was = food.name; Object.assign(food, vals); renameInMeals(food, was); if (!N) delete food.serving; food.lastG = Math.round(t.w); } else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); if ($('#dshare') && $('#dshare').checked) shareFood(food); }
       save();
       const used = food && draft.id ? S.meals.filter(m => m.fid === food.id) : [];
       okBtn($('#dsave'), () => { if (draft.id) { closeSheet(); render(); if (used.length) propagateDish(food, oldW, t.w, draft.fromMeal); } else addMealSheet(food); }, 'Блюдо сохранено');
@@ -631,7 +634,7 @@ function foodForm(pre) {
     <div id="fchk" class="sub dim" style="margin-top:6px"></div>
     ${pre.quick ? '' : `<label>Штрихкод</label><div class="bcrow"><input id="fbc" inputmode="numeric" value="${esc(pre.barcode || '')}" placeholder="необязательно"><button class="btn ghost sm" id="fscan">${ic('scan')}Скан</button></div>
     <button class="btn ghost sm" id="flabel" style="margin-top:8px">${ic('file')}Заполнить по фото этикетки</button>`}
-    ${sb && user && !pre.quick && !edit ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" ${pre.barcode ? 'checked' : ''}> Добавить в общую базу</label>` : ''}
+    ${sb && user && !pre.quick && !edit ? `<label style="display:flex;gap:8px;align-items:center;color:var(--txt);font-size:14px"><input type="checkbox" id="fshare" style="width:auto" checked> Добавить в общую базу</label>` : ''}
     ${pre.raw ? `<details class="raw"><summary>Распознанный текст</summary><pre>${esc(pre.raw)}</pre></details>` : ''}
     <div class="btns" style="margin-top:14px"><button class="btn" id="ok">${edit ? 'Сохранить' : 'Сохранить и выбрать'}</button><button class="btn ghost" id="cancel">Отмена</button></div>`, () => {
     $('#cancel').onclick = closeSheet;
@@ -666,7 +669,7 @@ function foodForm(pre) {
       if (g > 0) vals.serving = g;
       if (edit) {
         const food = S.foods.find(x => x.id === pre.id); if (!food) return closeSheet();
-        Object.assign(food, vals); if (!(g > 0)) delete food.serving; save();
+        const was = food.name; Object.assign(food, vals); if (!(g > 0)) delete food.serving; renameInMeals(food, was); save();
         return okBtn($('#ok'), () => { closeSheet(); render(); }, 'Продукт сохранён');
       }
       const food = { id: uid(), ...vals }; S.foods.push(food); save();
