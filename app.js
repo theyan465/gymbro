@@ -479,7 +479,8 @@ function copyMealsSheet(opts = {}) {
 function pickFood(opts = {}) {
   foodChoose = opts.onPick || null;
   const cloud = !!(sb && user), mt = !opts.onPick && addType && MT.find(x => x[0] === addType);
-  let shared = [], shT = null, shSeq = 0;
+  let shared = [], shT = null, shSeq = 0, ptab = 'p'; try { ptab = localStorage.getItem('gymbro.ptab') === 'd' ? 'd' : 'p'; } catch { /* ignore */ }
+  const ph = () => ptab === 'd' ? 'Поиск по блюдам' : cloud ? 'Поиск: избранное и общая база' : 'Поиск...';
   const sub = f => `${f.kcal} ккал · Ж${f.f} У${f.c} Б${f.p} /100г${f.serving ? ' · порция ' + f.serving + ' г' : ''}`;
   const tags = f => f.dish ? '<span class="tag dishtag">блюдо</span>' : '';
   const row = f => `<div class="row" data-id="${f.id}"><div class="main">${esc(f.name)}${tags(f)}<div class="sub">${sub(f)}</div></div>${f.dish ? `<button class="btn del" data-editdish="${f.id}" aria-label="Изменить блюдо">${ic('edit')}</button>` : ''}<button class="btn sm qadd" data-qadd="${f.id}" aria-label="Добавить сразу">${ic('plus')}${portionOf(f)} г</button></div>`;
@@ -488,19 +489,28 @@ function pickFood(opts = {}) {
   // one search over my foods (favourites) and the shared database
   const draw = () => {
     const q = $('#q').value.trim().toLowerCase(); let html;
-    if (!q) {
-      const recent = S.foods.filter(f => f.lastAt).sort((a, b) => b.lastAt - a.lastAt).slice(0, 6), ids = new Set(recent.map(f => f.id));
-      const rest = S.foods.filter(f => !ids.has(f.id)).sort((a, b) => (b.used || 0) - (a.used || 0)), dishes = rest.filter(f => f.dish), prods = rest.filter(f => !f.dish).slice(0, 30);
-      html = (recent.length ? head('Недавние') + recent.map(row).join('') : '') + (dishes.length ? head('Блюда') + dishes.map(row).join('') : '') + (prods.length ? head(recent.length ? 'Остальные' : 'Избранное') + prods.map(row).join('') : '');
+    const nd = S.foods.filter(f => f.dish).length, np = S.foods.length - nd;
+    $('#ptabs').innerHTML = `<button data-t="p" class="${ptab === 'p' ? 'on' : ''}">Продукты · ${np}</button><button data-t="d" class="${ptab === 'd' ? 'on' : ''}">Блюда · ${nd}</button>`;
+    $('#ptabs').querySelectorAll('button').forEach(b => b.onclick = () => { ptab = b.dataset.t; try { localStorage.setItem('gymbro.ptab', ptab); } catch { /* ignore */ } $('#q').placeholder = ph(); draw(); });
+    const byUse = (x, y) => (y.lastAt || 0) - (x.lastAt || 0) || (y.used || 0) - (x.used || 0);
+    if (ptab === 'd') {
+      const ds = S.foods.filter(f => f.dish && (!q || nameHas(f.name, q))).sort(byUse);
+      html = ds.length ? ds.map(row).join('') : `<div class="empty">${nd ? 'Блюд с таким названием нет.' : 'Блюд пока нет. Блюдо — это несколько продуктов с граммами, которые сохраняются как одна позиция.'}</div>`;
+      html += `<button class="btn ghost full" id="dnew" style="margin-top:10px">${ic('plus')}Создать блюдо</button>`;
+    } else if (!q) {
+      const recent = S.foods.filter(f => !f.dish && f.lastAt).sort((a, b) => b.lastAt - a.lastAt).slice(0, 6), ids = new Set(recent.map(f => f.id));
+      const prods = S.foods.filter(f => !f.dish && !ids.has(f.id)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30);
+      html = (recent.length ? head('Недавние') + recent.map(row).join('') : '') + (prods.length ? head(recent.length ? 'Остальные' : 'Избранное') + prods.map(row).join('') : '');
       if (!html) html = `<div class="empty">${cloud ? 'Начните вводить название: поиск идёт по избранному и по общей базе.' : 'В избранном пока пусто.'}</div>`;
       else if (cloud) html += `<div class="sub dim" style="margin-top:10px">Начните вводить название: поиск идёт по избранному и по общей базе.</div>`;
     } else {
-      const mine = S.foods.filter(f => nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30), other = shared.filter(f => !findMine(f));
-      const md = mine.filter(f => f.dish), mp = mine.filter(f => !f.dish);
-      html = (md.length ? head('Блюда') + md.map(row).join('') : '') + (mp.length ? head('Избранное') + mp.map(row).join('') : '') + (cloud && q.length >= 2 ? (other.length ? head('Общая база') + other.map(srow).join('') : (loadingShared ? head('Общая база') + '<div class="sub dim" style="padding:6px 0">Ищу…</div>' : '')) : '');
-      if (!mine.length && !other.length && !loadingShared) html = '<div class="empty">Ничего не найдено. Создайте новый продукт или отсканируйте.</div>';
+      const mine = S.foods.filter(f => !f.dish && nameHas(f.name, q)).sort((a, b) => (b.used || 0) - (a.used || 0)).slice(0, 30), other = shared.filter(f => !findMine(f)), dm = S.foods.filter(f => f.dish && nameHas(f.name, q)).length;
+      html = (dm ? `<button class="btn ghost full" id="todish" style="margin:6px 0 0">${ic('utensils')}Найдено в блюдах: ${dm} →</button>` : '') + (mine.length ? head('Избранное') + mine.map(row).join('') : '') + (cloud && q.length >= 2 ? (other.length ? head('Общая база') + other.map(srow).join('') : (loadingShared ? head('Общая база') + '<div class="sub dim" style="padding:6px 0">Ищу…</div>' : '')) : '');
+      if (!mine.length && !other.length && !loadingShared && !dm) html = '<div class="empty">Ничего не найдено. Создайте новый продукт или отсканируйте.</div>';
     }
     $('#flist').innerHTML = html;
+    if ($('#dnew')) $('#dnew').onclick = () => dishEditor({ name: '', items: [], cooked: '' });
+    if ($('#todish')) $('#todish').onclick = () => { ptab = 'd'; $('#q').placeholder = ph(); draw(); };
     document.querySelectorAll('#flist [data-qadd]').forEach(b => b.onclick = e => { e.stopPropagation(); const f = S.foods.find(x => x.id === b.dataset.qadd); if (f) { quickAdd(f); draw(); } });
     document.querySelectorAll('#flist [data-id]').forEach(r => r.onclick = e => { if (e.target.closest('[data-editdish],[data-qadd]')) return; chooseFood(S.foods.find(f => f.id === r.dataset.id)); });
     document.querySelectorAll('#flist [data-editdish]').forEach(b => b.onclick = e => { e.stopPropagation(); dishEditor(dishDraft(S.foods.find(f => f.id === b.dataset.editdish))); });
@@ -521,8 +531,8 @@ function pickFood(opts = {}) {
     }, 300);
   };
   sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2>
-    <div class="pacts"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('utensils')}Блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
-    <input id="q" placeholder="${cloud ? 'Поиск: избранное и общая база' : 'Поиск...'}" autocomplete="off" style="margin-top:10px"><div id="flist" style="margin:8px 0"></div>`, () => {
+    <div class="pacts"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('plus')}Новое блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
+    <input id="q" placeholder="${ph()}" autocomplete="off" style="margin-top:10px"><div class="seg" id="ptabs" style="margin:10px 0 0"></div><div id="flist" style="margin:8px 0"></div>`, () => {
     draw(); $('#q').oninput = e => { loadShared(e.target.value); draw(); };
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = quickEntry;
