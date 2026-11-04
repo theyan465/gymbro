@@ -589,3 +589,5 @@ body::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; height
 @media (horizontal-viewport-segments: 2) {
   #top { padding-left: 16px; padding-right: calc(100vw - env(viewport-segment-right 0 0, 100vw) + 16px); max-width: none; }
 }
+#toast .tundo { margin-left: 6px; background: rgba(52,211,153,.15); border: 1px solid rgba(52,211,153,.5); color: var(--acc); border-radius: 12px; padding: 5px 12px; font-weight: 700; font-size: 13px; }
+#toast:has(.tundo) { pointer-events: auto; }
