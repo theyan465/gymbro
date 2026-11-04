@@ -21,7 +21,7 @@ function planClean(p) {
     o.goals = g(P.goals); o.goalsRest = g(P.goalsRest); o.trainDays = Array.isArray(P.trainDays) ? P.trainDays.map(Number).filter(d => d >= 0 && d <= 6) : null;
     o.meals = (Array.isArray(P.meals) ? P.meals : []).slice(0, 12).map(m => ({ type: ['b', 'l', 'd', 's'].includes(m && m.type) ? m.type : 's', text: s0(m && m.text, 600), items: (Array.isArray(m && m.items) ? m.items : []).slice(0, 30).map(it => ({ n: s0(it && it.n, 80), g: n0(it && it.g), kcal: n0(it && it.kcal), p: n0(it && it.p), f: n0(it && it.f), c: n0(it && it.c) })) }));
   } else {
-    o.templates = (Array.isArray(P.templates) ? P.templates : []).slice(0, 14).map(t => ({ id: s0(t && t.id || uid(), 40), name: s0(t && t.name, 80), exercises: (Array.isArray(t && t.exercises) ? t.exercises : []).slice(0, 30).map(e => ({ name: s0(e && e.name, 80), plan: (Array.isArray(e && e.plan) ? e.plan : []).slice(0, 20).map(x => ({ w: n0(x && x.w), r: Math.round(n0(x && x.r)) })).filter(x => x.r > 0) })) }));
+    o.templates = (Array.isArray(P.templates) ? P.templates : []).slice(0, 14).map(t => ({ id: s0(t && t.id || uid(), 40), name: s0(t && t.name, 80), exercises: (Array.isArray(t && t.exercises) ? t.exercises : []).slice(0, 30).map((e, k) => ({ name: s0(e && e.name, 80), link: cleanUrl(e && e.link), withPrev: !!(e && e.withPrev) && k > 0, plan: (Array.isArray(e && e.plan) ? e.plan : []).slice(0, 20).map(x => ({ w: n0(x && x.w), r: Math.round(n0(x && x.r)) })).filter(x => x.r > 0) })) }));
     o.schedule = {}; Object.entries(P.schedule && typeof P.schedule === 'object' ? P.schedule : {}).forEach(([wd, id]) => { if (+wd >= 0 && +wd <= 6) o.schedule[wd] = s0(id, 40); });
   }
   o.notes = s0(P.notes, 4000); return { ...p, payload: o, title: s0(p.title, 120), note: s0(p.note, 4000) };
@@ -173,7 +173,7 @@ function planBody(p) {
       ((P.meals || []).filter(mealHas).length ? `<div class="sub dim" style="margin:10px 0 2px">Меню и рекомендации</div>${P.meals.filter(mealHas).map(mealView).join('')}` : '') +
       (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
   }
-  return (P.templates || []).map(t => { const days = Object.entries(P.schedule || {}).filter(([, id]) => id === t.id).map(([wd]) => +wd); return `<div class="pday"><div class="ph2"><b translate="no">${esc(t.name)}</b><span>${wdNames(days)}</span></div>${t.exercises.map(e => `<div class="pex"><span>${esc(e.name)}</span><em>${esc(planText(e.plan)) || '—'}</em></div>`).join('')}</div>`; }).join('') + (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
+  return (P.templates || []).map(t => { const days = Object.entries(P.schedule || {}).filter(([, id]) => id === t.id).map(([wd]) => +wd); return `<div class="pday"><div class="ph2"><b translate="no">${esc(t.name)}</b><span>${wdNames(days)}</span></div>${t.exercises.map(e => `<div class="pex ${e.withPrev ? 'ssw' : ''}"><span>${e.withPrev ? '<i class="ssmark" title="Суперсет">+</i>' : ''}${esc(e.name)}${e.link ? `<a class="vchip" href="${esc(e.link)}" target="_blank" rel="noopener noreferrer">${ic('play')}Видео</a>` : ''}</span><em>${esc(planText(e.plan)) || '—'}</em></div>`).join('')}</div>`; }).join('') + (P.notes ? `<div class="sub dim" style="margin-top:10px;white-space:pre-wrap"><span translate="no">${esc(P.notes)}</span></div>` : '');
 }
 async function planOpen(id) {
   let p; try { p = await planFetch(id); } catch (e) { return toast(coachErr(e)); }
@@ -197,7 +197,7 @@ function planApply(p) {
     S.coachNutrition = { planId: p.id, title: p.title, note: p.note || '', tips: P.notes || '', meals: P.meals || [] };
   } else {
     S.templates = S.templates.filter(t => !t.coach); const idMap = {};
-    (P.templates || []).forEach(t => { const id = uid(); idMap[t.id] = id; S.templates.push({ id, name: t.name, exercises: (t.exercises || []).map(e => ({ name: e.name, plan: e.plan || [] })), coach: true }); });
+    (P.templates || []).forEach(t => { const id = uid(); idMap[t.id] = id; S.templates.push({ id, name: t.name, exercises: (t.exercises || []).map(e => ({ name: e.name, plan: e.plan || [], ...(e.withPrev ? { withPrev: true } : {}) })), coach: true }); (t.exercises || []).forEach(e => { if (e.link && !exLink(e.name)) { S.exLinks = S.exLinks || {}; S.exLinks[e.name] = e.link; } }); });
     S.schedule = {}; Object.entries(P.schedule || {}).forEach(([wd, tid]) => { if (idMap[tid]) S.schedule[wd] = idMap[tid]; });
     S.coachTraining = { planId: p.id, title: p.title, note: p.note || '', tips: P.notes || '' };
   }
@@ -551,7 +551,9 @@ function trainingEditor(c, draft) {
     <label style="margin-top:0">${c ? 'Название плана' : 'Название шаблона'}</label><input id="pt" value="${esc(draft.title)}" placeholder="Например: Масса, 3 дня в неделю" maxlength="120">
     ${draft.days.map((d, i) => `<div class="pgroup" data-day="${i}"><div class="dayhead"><input data-dn="${i}" value="${esc(d.name)}" maxlength="80" aria-label="Название дня"><button class="btn del" data-ddel="${i}" aria-label="Удалить день">${ic('x')}</button></div>
       <div class="dim small" style="margin:6px 0 4px">Дни недели</div><div data-dwd="${i}">${wdChips(d.wd)}</div>
-      ${d.exercises.map((e, j) => `<div class="pexrow"><div class="pexn"><b>${esc(e.name)}</b><button class="btn del" data-edel="${i}.${j}" aria-label="Убрать">${ic('x')}</button></div><input data-ep="${i}.${j}" value="${esc(e.plan)}" placeholder="вес×повторы: 80x8, 80x8, 80x6"></div>`).join('')}
+      ${d.exercises.map((e, j) => `<div class="pexrow"><div class="pexn"><b>${esc(e.name)}</b><button class="btn del" data-edel="${i}.${j}" aria-label="Убрать">${ic('x')}</button></div><input data-ep="${i}.${j}" value="${esc(e.plan)}" placeholder="вес×повторы: 80x8, 80x8, 80x6">
+        <input data-el="${i}.${j}" inputmode="url" autocapitalize="none" value="${esc(e.link || '')}" placeholder="Ссылка на видео (необязательно)">
+        ${j > 0 ? `<label class="sw ssl"><input type="checkbox" data-ew="${i}.${j}" ${e.withPrev ? 'checked' : ''}><i></i><span>Суперсет с предыдущим<small>без отдыха между упражнениями</small></span></label>` : ''}</div>`).join('')}
       <button class="btn ghost sm" data-eadd="${i}" style="margin-top:8px">${ic('plus')}Упражнение</button></div>`).join('')}
     <div class="btns" style="margin-top:10px"><button class="btn ghost" id="dadd">${ic('plus')}День</button>${S.templates.filter(t => !t.coach).length ? `<button class="btn ghost" id="dtpl">${ic('list')}Из моих шаблонов</button>` : ''}</div>
     <label>Заметки и рекомендации</label><textarea id="pn" rows="3" maxlength="3000" placeholder="Разминка, отдых между подходами, техника, прогрессия весов…">${esc(draft.notes)}</textarea>
@@ -559,25 +561,25 @@ function trainingEditor(c, draft) {
     p.querySelectorAll('[data-dwd]').forEach(el => bindChips(el));
     const sync = () => {
       draft.title = $('#pt').value; draft.notes = $('#pn').value;
-      draft.days.forEach((d, i) => { d.name = p.querySelector(`[data-dn="${i}"]`).value; d.wd = pickedDays(p.querySelector(`[data-dwd="${i}"]`)); d.exercises.forEach((e, j) => { e.plan = p.querySelector(`[data-ep="${i}.${j}"]`).value; }); });
+      draft.days.forEach((d, i) => { d.name = p.querySelector(`[data-dn="${i}"]`).value; d.wd = pickedDays(p.querySelector(`[data-dwd="${i}"]`)); d.exercises.forEach((e, j) => { e.plan = p.querySelector(`[data-ep="${i}.${j}"]`).value; e.link = p.querySelector(`[data-el="${i}.${j}"]`).value; const w = p.querySelector(`[data-ew="${i}.${j}"]`); e.withPrev = !!(w && w.checked); }); });
     };
     const again = () => trainingEditor(c, draft);
     tplBind('training', c, draft, sync);
     $('#dadd').onclick = () => { sync(); draft.days.push({ id: uid(), name: tx('День') + ' ' + (draft.days.length + 1), wd: [], exercises: [] }); again(); };
     p.querySelectorAll('[data-ddel]').forEach(b => b.onclick = () => { sync(); draft.days.splice(+b.dataset.ddel, 1); again(); });
     p.querySelectorAll('[data-edel]').forEach(b => b.onclick = () => { sync(); const [i, j] = b.dataset.edel.split('.').map(Number); draft.days[i].exercises.splice(j, 1); again(); });
-    p.querySelectorAll('[data-eadd]').forEach(b => b.onclick = () => { sync(); const i = +b.dataset.eadd; addExercise(name => { draft.days[i].exercises.push({ name, plan: '' }); again(); }); });
+    p.querySelectorAll('[data-eadd]').forEach(b => b.onclick = () => { sync(); const i = +b.dataset.eadd; addExercise(name => { draft.days[i].exercises.push({ name, plan: '', link: exLink(name) || '', withPrev: false }); again(); }); });
     if ($('#dtpl')) $('#dtpl').onclick = () => {
       sync(); const tp = S.templates.filter(t => !t.coach);
       sheet(`<h2 class="sh">Мои шаблоны</h2><div class="dim small">Выберите шаблон: он добавится как новый день плана.</div>${tp.map(t => `<div class="row pick" data-tp="${t.id}"><div class="main"><b>${esc(t.name)}</b><div class="sub">${t.exercises.length} упр.</div></div><span class="btn sm ghost">${ic('plus')}</span></div>`).join('')}`, pn => {
-        pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = () => { const t = tp.find(x => x.id === r.dataset.tp); draft.days.push({ id: uid(), name: t.name, wd: [], exercises: t.exercises.map(e => ({ name: e.name, plan: planText(e.plan) })) }); again(); });
+        pn.querySelectorAll('[data-tp]').forEach(r => r.onclick = () => { const t = tp.find(x => x.id === r.dataset.tp); draft.days.push({ id: uid(), name: t.name, wd: [], exercises: t.exercises.map(e => ({ name: e.name, plan: planText(e.plan), link: exLink(e.name) || '', withPrev: !!e.withPrev })) }); again(); });
       });
     };
     if ($('#psend')) $('#psend').onclick = () => {
       sync(); if (!draft.title.trim()) return $('#pt').focus();
       const days = draft.days.filter(d => d.exercises.length); if (!days.length) return toast('Добавьте хотя бы одно упражнение');
       const schedule = {}; days.forEach(d => d.wd.forEach(w => { schedule[w] = d.id; }));
-      sendPlan(c, 'training', draft.title.trim(), { templates: days.map(d => ({ id: d.id, name: d.name.trim() || 'День', exercises: d.exercises.map(e => ({ name: e.name, plan: parsePlan(e.plan) })) })), schedule, notes: draft.notes.trim() }, $('#psend'));
+      sendPlan(c, 'training', draft.title.trim(), { templates: days.map(d => ({ id: d.id, name: d.name.trim() || 'День', exercises: d.exercises.map((e, j) => ({ name: e.name, plan: parsePlan(e.plan), link: cleanUrl(e.link), withPrev: !!e.withPrev && j > 0 })) })), schedule, notes: draft.notes.trim() }, $('#psend'));
     };
   });
 }
