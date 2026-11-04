@@ -531,8 +531,8 @@ function pickFood(opts = {}) {
     }, 300);
   };
   sheet(`<h2 class="sh">${opts.onPick ? 'Выберите продукт' : mt ? 'Добавить · ' + mt[1] : 'Продукт'}</h2>
-    <div class="pacts"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('plus')}Новое блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
-    <input id="q" placeholder="${ph()}" autocomplete="off" style="margin-top:10px"><div class="seg" id="ptabs" style="margin:10px 0 0"></div><div id="flist" style="margin:8px 0"></div>`, () => {
+    <div class="pacts"><button class="btn" id="newf">${ic('plus')}Новый продукт</button>${opts.onPick ? '' : `<button class="btn ghost" id="dish">${ic('plus')}Новое блюдо</button><button class="btn ghost" id="quick">Быстро: только ккал</button>`}</div>
+    <input id="q" placeholder="${ph()}" autocomplete="off" style="margin-top:10px"><div class="pacts" style="margin-top:8px"><button class="btn ghost" id="pscan">${ic('scan')}Штрихкод</button><button class="btn ghost" id="pocr">${ic('file')}Этикетка</button></div><div class="seg" id="ptabs" style="margin:10px 0 0"></div><div id="flist" style="margin:8px 0"></div>`, () => {
     draw(); $('#q').oninput = e => { loadShared(e.target.value); draw(); };
     $('#newf').onclick = () => foodForm(opts.onPick ? { onSave: opts.onPick } : {});
     if ($('#quick')) $('#quick').onclick = quickEntry;
