@@ -590,4 +590,11 @@ body::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; height
   #top { padding-left: 16px; padding-right: calc(100vw - env(viewport-segment-right 0 0, 100vw) + 16px); max-width: none; }
 }
 #toast .tundo { margin-left: 6px; background: rgba(52,211,153,.15); border: 1px solid rgba(52,211,153,.5); color: var(--acc); border-radius: 12px; padding: 5px 12px; font-weight: 700; font-size: 13px; }
-#toast:has(.tundo) { pointer-events: auto; }
+#toast.show:has(.tundo) { pointer-events: auto; }
+
+/* quick add, meal menu */
+.btn.qadd { display: inline-flex; align-items: center; gap: 4px; background: color-mix(in srgb, var(--acc) 16%, transparent); border: 1px solid color-mix(in srgb, var(--acc) 45%, transparent); color: var(--acc); font-weight: 700; white-space: nowrap; }
+.btn.qadd svg { width: 15px; height: 15px; }
+.mcard .mmore { width: 34px; height: 38px; flex: none; display: grid; place-items: center; padding: 0; background: none; border: 0; color: var(--dim); }
+.mcard .mmore svg { width: 20px; height: 20px; fill: currentColor; stroke: none; }
+.mi.off { opacity: .45; pointer-events: none; }
