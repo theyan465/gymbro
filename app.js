@@ -354,9 +354,17 @@ function editMealSheet(m) {
     <label>Граммы</label><input id="eg" inputmode="decimal" value="${m.g}">
     <div class="grid2 col1"><div><label>Ккал</label><input id="ek" inputmode="decimal" value="${Math.round(m.kcal)}"></div><div><label>Жиры, г</label><input id="ef" inputmode="decimal" value="${r1(m.f)}"></div>
     <div><label>Углеводы, г</label><input id="ec" inputmode="decimal" value="${r1(m.c)}"></div><div><label>Белки, г</label><input id="ep" inputmode="decimal" value="${r1(m.p)}"></div></div>
-    ${src && src.dish ? `<button class="btn ghost sm" id="edish" style="margin-top:10px">${ic('list')}Изменить блюдо навсегда</button><div class="sub dim" style="margin-top:4px">Состав блюда изменится в «Блюдах» для всех будущих записей. Эта запись останется как есть.</div>` : ''}
+    ${src && src.dish ? `<button class="btn ghost sm" id="edish" style="margin-top:10px">${ic('list')}Изменить блюдо навсегда</button><div class="sub dim" style="margin-top:4px">Состав блюда изменится в «Блюдах», и эта запись пересчитается (сохранится её доля от блюда). Прошлые записи не меняются.</div>` : ''}
     <div class="btns" style="margin-top:14px"><button class="btn" id="eok">Сохранить</button><button class="btn ghost danger" id="edel">Удалить запись</button></div>`, p => {
-    if ($('#edish')) $('#edish').onclick = () => dishEditor(dishDraft(src));
+    // editing the dish from a logged meal: the meal keeps its share of the dish, so it is recalculated with the new composition
+    if ($('#edish')) $('#edish').onclick = () => {
+      const oldW = dishTotals({ items: src.dish.items, cooked: src.dish.cooked }).w, share = oldW > 0 ? m.g / oldW : 0;
+      dishEditor({ ...dishDraft(src), onSaved: f => {
+        const nw = dishTotals({ items: f.dish.items, cooked: f.dish.cooked }).w;
+        if (share > 0) { m.g = Math.round(share * nw * 10) / 10; Object.assign(m, per(f, m.g)); }
+        f.lastG = Math.round(nw); save();
+      } });
+    };
     p.querySelectorAll('[data-et]').forEach(b => b.onclick = () => { type = b.dataset.et; p.querySelectorAll('[data-et]').forEach(x => x.classList.toggle('on', x === b)); });
     ['#ek', '#ep', '#ef', '#ec'].forEach(id => { $(id).oninput = () => { touched = true; }; });
     $('#eg').oninput = () => {
@@ -505,7 +513,7 @@ function dishEditor(draft) {
       if (!draft.name.trim()) return $('#dn').focus();
       const vals = { name: draft.name.trim(), kcal: Math.round(t.kcal * 100 / t.w), p: r1(t.p * 100 / t.w), f: r1(t.f * 100 / t.w), c: r1(t.c * 100 / t.w), dish: { items: draft.items.map(i => ({ ...i })), cooked: num(draft.cooked) || 0 } };
       let food = draft.id && S.foods.find(x => x.id === draft.id);
-      if (food) Object.assign(food, vals); else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); if ($('#dshare') && $('#dshare').checked) shareFood(food); }
+      if (food) { Object.assign(food, vals); if (draft.onSaved) draft.onSaved(food); } else { food = { id: uid(), barcode: '', ...vals }; S.foods.push(food); if ($('#dshare') && $('#dshare').checked) shareFood(food); }
       save(); okBtn($('#dsave'), () => { if (draft.id) { closeSheet(); render(); } else addMealSheet(food); }, 'Блюдо сохранено');
     };
     upd();
